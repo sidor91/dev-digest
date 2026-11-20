@@ -154,7 +154,9 @@ export type ConventionCandidate = z.infer<typeof ConventionCandidate>;
 // ---- Agents ----
 // 'openrouter' routes through the OpenAI-compatible API (OpenAIProvider with a
 // custom baseURL) — used by the CI runner for cheap models (DeepSeek/GLM/MiniMax).
-export const Provider = z.enum(['openai', 'anthropic', 'openrouter']);
+export const Provider = z.enum(['openai', 'openrouter']);
+// Snapshots and past runs retain the provider that actually ran.
+export const HistoricalProvider = z.enum([...Provider.options, 'anthropic']);
 export type Provider = z.infer<typeof Provider>;
 
 // Review execution strategy (matches @devdigest/reviewer-core's ReviewStrategy):
@@ -204,7 +206,7 @@ export type AgentSkillLink = z.infer<typeof AgentSkillLink>;
 // plus the ordered skill ids linked at snapshot time. Used for reproducibility
 // (eval replays a past version) and for surfacing an agent's edit history.
 export const AgentVersionConfig = z.object({
-  provider: Provider,
+  provider: HistoricalProvider,
   model: z.string(),
   system_prompt: z.string(),
   output_schema: z.unknown().nullish(),

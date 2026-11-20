@@ -103,7 +103,7 @@ export const SettingsUpdate = Settings.partial();
 export type SettingsUpdate = z.infer<typeof SettingsUpdate>;
 
 // ---- Connection test ----
-export const ConnTestProvider = z.enum(['openai', 'anthropic', 'openrouter', 'github']);
+export const ConnTestProvider = z.enum([...Provider.options, 'github']);
 export type ConnTestProvider = z.infer<typeof ConnTestProvider>;
 
 export const ConnTestRequest = z.object({
@@ -125,7 +125,6 @@ export type ConnTestResult = z.infer<typeof ConnTestResult>;
 /** Boolean per provider: true ⇒ a key/PAT is stored. The value is never exposed. */
 export const SecretsStatus = z.object({
   openai: z.boolean(),
-  anthropic: z.boolean(),
   openrouter: z.boolean(),
   github: z.boolean(),
 });

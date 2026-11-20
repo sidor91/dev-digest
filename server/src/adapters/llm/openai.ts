@@ -15,27 +15,38 @@ import { ExternalServiceError } from '../../platform/errors.js';
 const DEFAULT_TIMEOUT = 60_000;
 const EMBED_MODEL = 'text-embedding-3-small';
 
-/**
- * GPT-5 and the o-series reasoning models reject a custom `temperature` (only
- * the default is allowed) and use `max_completion_tokens` instead of
- * `max_tokens`. Detect them so we can omit/remap those params.
- */
-function isReasoningModel(model: string): boolean {
-  return /^(gpt-5|o1|o3|o4)/.test(model);
-}
+type TuningParams = Pick<
+  OpenAI.ChatCompletionCreateParamsNonStreaming,
+  'temperature' | 'max_tokens' | 'max_completion_tokens' | 'reasoning_effort'
+>;
 
-/** Build the temperature + token-cap params appropriate for the given model. */
 function tuningParams(
   model: string,
   temperature: number | undefined,
   maxTokens: number | undefined,
-): Record<string, number> {
-  if (isReasoningModel(model)) {
-    return maxTokens ? { max_completion_tokens: maxTokens } : {};
+): TuningParams {
+  const tokenLimit = maxTokens || undefined;
+  if (model.startsWith('gpt-6.2-')) {
+    return { reasoning_effort: 'medium', max_completion_tokens: tokenLimit };
   }
-  const p: Record<string, number> = { temperature: temperature ?? 0 };
-  if (maxTokens) p.max_tokens = maxTokens;
-  return p;
+  if (/^(gpt-5|o1|o3|o4)/.test(model)) {
+    return { max_completion_tokens: tokenLimit };
+  }
+  return { temperature: temperature ?? 0, max_tokens: tokenLimit };
+}
+
+function completionText(response: OpenAI.ChatCompletion): string {
+  const choice = response.choices?.[0];
+  if (choice?.message.refusal) {
+    throw new ExternalServiceError('OpenAI refused the request');
+  }
+  if (choice?.finish_reason === 'content_filter') {
+    throw new ExternalServiceError('OpenAI stopped the completion due to its content filter');
+  }
+  if (choice?.finish_reason === 'length') {
+    throw new ExternalServiceError('OpenAI stopped the completion at the token limit');
+  }
+  return choice?.message.content ?? '';
 }
 
 /**
@@ -62,18 +73,17 @@ export class OpenAIProvider implements LLMProvider {
   }
 
   async complete(req: CompletionRequest): Promise<CompletionResult> {
-    return withRetry(() =>
-      withTimeout(this.doComplete(req), req.timeoutMs ?? DEFAULT_TIMEOUT),
+    const res = await withRetry(() =>
+      withTimeout(
+        this.client.chat.completions.create({
+          model: req.model,
+          messages: req.messages,
+          ...tuningParams(req.model, req.temperature ?? 0.2, req.maxTokens),
+        }),
+        req.timeoutMs ?? DEFAULT_TIMEOUT,
+      ),
     );
-  }
-
-  private async doComplete(req: CompletionRequest): Promise<CompletionResult> {
-    const res = await this.client.chat.completions.create({
-      model: req.model,
-      messages: req.messages,
-      ...tuningParams(req.model, req.temperature ?? 0.2, req.maxTokens),
-    });
-    const text = res.choices?.[0]?.message?.content ?? '';
+    const text = completionText(res);
     const tokensIn = res.usage?.prompt_tokens ?? 0;
     const tokensOut = res.usage?.completion_tokens ?? 0;
     return {
@@ -108,7 +118,7 @@ export class OpenAIProvider implements LLMProvider {
           req.timeoutMs ?? DEFAULT_TIMEOUT,
         ),
       );
-      lastRaw = res.choices?.[0]?.message?.content ?? '';
+      lastRaw = completionText(res);
       tokensIn += res.usage?.prompt_tokens ?? 0;
       tokensOut += res.usage?.completion_tokens ?? 0;
 

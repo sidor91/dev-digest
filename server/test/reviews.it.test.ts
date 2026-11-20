@@ -110,7 +110,7 @@ d('A2 reviews + agents (Testcontainers pg)', () => {
     await pg?.stop();
   });
 
-  function appWith(structured: unknown, provider: 'openai' | 'anthropic' = 'openai') {
+  function appWith(structured: unknown, provider: 'openai' | 'openrouter' = 'openai') {
     return buildApp({
       config: config(),
       db: pg.handle.db,
@@ -212,14 +212,14 @@ d('A2 reviews + agents (Testcontainers pg)', () => {
     await app.close();
   });
 
-  it('dual-provider structured output: anthropic provider returns the same Review shape', async () => {
-    const app = await appWith(REVIEW_FIXTURE, 'anthropic');
+  it('dual-provider structured output: Claude via OpenRouter returns the same Review shape', async () => {
+    const app = await appWith(REVIEW_FIXTURE, 'openrouter');
     const { pr } = await setupRepoAndPr(pg.handle.db, workspaceId);
     const agent = (
       await app.inject({
         method: 'POST',
         url: '/agents',
-        payload: { name: 'Claude Rev', provider: 'anthropic', model: 'claude-x', system_prompt: 'rev' },
+        payload: { name: 'Claude Rev', provider: 'openrouter', model: 'anthropic/claude-sonnet-4.6', system_prompt: 'rev' },
       })
     ).json();
     await app.inject({ method: 'POST', url: `/pulls/${pr.id}/review`, payload: { agentId: agent.id } });
@@ -228,7 +228,7 @@ d('A2 reviews + agents (Testcontainers pg)', () => {
       await app.inject({ method: 'GET', url: `/pulls/${pr.id}/reviews` })
     ).json();
     expect(reviews[0].findings).toHaveLength(1);
-    expect(reviews[0].model).toBe('claude-x');
+    expect(reviews[0].model).toBe('anthropic/claude-sonnet-4.6');
     await app.close();
   });
 

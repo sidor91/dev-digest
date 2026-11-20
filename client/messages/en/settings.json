@@ -7,8 +7,6 @@
     "body": "Bring your own keys. Stored locally through SecretsProvider (.env in MVP) — never uploaded.",
     "openaiLabel": "OpenAI API key",
     "openaiHint": "Used for reviews, summaries, embeddings (text-embedding-3-small).",
-    "anthropicLabel": "Anthropic API key",
-    "anthropicHint": "Used for Claude-backed agents.",
     "openrouterLabel": "OpenRouter API key",
     "openrouterHint": "One key, many cheap models (DeepSeek/GLM/MiniMax). Used by CI reviewers + openrouter agents.",
     "githubLabel": "GitHub PAT (fine-grained)",
