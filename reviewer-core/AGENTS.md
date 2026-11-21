@@ -18,4 +18,4 @@ Owns prompt assembly, review strategies, structured output, and citation groundi
 
 - **Review behavior or acceptance criteria.** Look in [`specs/`](specs/).
 - **Prompt, model output, or grounding.** Start with the [pipeline overview](README.md#pipeline). Additional package documentation belongs in [`docs/`](docs/).
-- **Durable discoveries.** Record them in [INSIGHTS.md](INSIGHTS.md).
+- **Prior insights.** Read [INSIGHTS.md](INSIGHTS.md) before working on or answering questions about this package.

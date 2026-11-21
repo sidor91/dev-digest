@@ -6,6 +6,7 @@ Codex discovers these repository skills in `.agents/skills/`. Start Codex from t
 
 | Skill | Scope | Description |
 |-------|-------|-------------|
+| [engineering-insights](engineering-insights/SKILL.md) | Shared | Read and record reusable findings in package `INSIGHTS.md` files |
 | [fastify-best-practices](fastify-best-practices/SKILL.md) | Backend | Fastify routes, plugins, JSON-schema validation, error handling |
 | [drizzle-orm-patterns](drizzle-orm-patterns/SKILL.md) | Backend | Drizzle schema, queries, relations, transactions, migrations |
 | [postgresql-table-design](postgresql-table-design/SKILL.md) | Backend | Postgres schema design, data types, indexing, constraints |

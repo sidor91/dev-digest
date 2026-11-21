@@ -17,4 +17,4 @@ Owns deterministic browser checks of the web app and API on seeded PostgreSQL. S
 
 - **Flow coverage or steps.** Use the [coverage table](README.md#coverage-typological-not-exhaustive) and the matching JSON flow.
 - **Runner, CI, or test environment.** Use the [package README](README.md) and the [CI workflow](../.github/workflows/e2e-web.yml). Additional package documentation belongs in [`docs/`](docs/).
-- **Durable discoveries.** Record them in [INSIGHTS.md](INSIGHTS.md).
+- **Prior insights.** Read [INSIGHTS.md](INSIGHTS.md) before working on or answering questions about this package.

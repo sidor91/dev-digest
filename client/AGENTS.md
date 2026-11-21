@@ -18,4 +18,4 @@ Owns the web studio on port 3000. Stack is TypeScript, Next.js 15 App Router, Re
 
 - **UI behavior or acceptance criteria.** Look in [`specs/`](specs/).
 - **Routes and UI architecture.** Start with the [UI route map](README.md#ui-route-map). Additional package documentation belongs in [`docs/`](docs/).
-- **Durable discoveries.** Record them in [INSIGHTS.md](INSIGHTS.md).
+- **Prior insights.** Read [INSIGHTS.md](INSIGHTS.md) before working on or answering questions about this package.

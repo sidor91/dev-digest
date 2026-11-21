@@ -18,4 +18,4 @@ Owns the local API on port 3001. Stack is Node.js 22+, TypeScript, Fastify 5, Zo
 
 - **API behavior, data rules, or acceptance criteria.** Look in [`specs/`](specs/).
 - **API and indexing.** Start with the [API map](README.md#api-map-starter) or the [Repo Intel guide](src/modules/repo-intel/README.md). Additional package documentation belongs in [`docs/`](docs/).
-- **Durable discoveries.** Record them in [INSIGHTS.md](INSIGHTS.md).
+- **Prior insights.** Read [INSIGHTS.md](INSIGHTS.md) before working on or answering questions about this package.
