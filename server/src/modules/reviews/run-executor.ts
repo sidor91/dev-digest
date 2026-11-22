@@ -1,6 +1,7 @@
 import type { Container } from '../../platform/container.js';
 import type { Provider, Review, RunTrace, UnifiedDiff } from '@devdigest/shared';
 import { reviewPullRequest, countBlockers } from '@devdigest/reviewer-core';
+import { withRetry } from '../../platform/resilience.js';
 import { RunLogger } from '../../platform/run-logger.js';
 import * as schema from '../../db/schema.js';
 import type { AgentRow } from '../../db/rows.js';
@@ -309,11 +310,21 @@ export class ReviewRunExecutor {
     runLog: RunLogger,
   ): Promise<void> {
     try {
-      await this.repo.transaction(async (tx) => {
-        if (await tx.completeAgentRun(runId, completion)) {
-          await tx.saveRunTrace(runId, this.traceFromBuffer(runId, pull, agent, completion));
-        }
-      });
+      // A failed trace write rolls back completion. Retry both before settling the run alone.
+      await withRetry(
+        () => this.repo.transaction(async (tx) => {
+          if (await tx.completeAgentRun(runId, completion)) {
+            await tx.saveRunTrace(runId, this.traceFromBuffer(runId, pull, agent, completion));
+          }
+        }),
+        {
+          retries: 1,
+          isRetryable: () => true,
+          onRetry: (_attempt, err) => {
+            runLog.error(`Could not save run ${runId} with its trace, retrying: ${(err as Error).message}`);
+          },
+        },
+      );
     } catch (err) {
       runLog.error(`Could not save run ${runId} with its trace: ${(err as Error).message}`);
       await this.repo.completeAgentRun(runId, completion).catch((error: Error) => {

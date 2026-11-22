@@ -297,16 +297,22 @@ d('A2 reviews + agents (Testcontainers pg)', () => {
     }
   });
 
-  it.each([true, false])('keeps the complete cost after a write failure (trace available: %s)', async (traceAvailable) => {
+  it.each([
+    { scenario: 'recording the interruption', traceWriteFailures: 0, expectedTraceStatus: 200 },
+    { scenario: 'recovering from a transient trace write failure', traceWriteFailures: 1, expectedTraceStatus: 200 },
+    { scenario: 'settling after repeated trace write failures', traceWriteFailures: 2, expectedTraceStatus: 404 },
+  ])('keeps the review cost when $scenario', async ({ traceWriteFailures, expectedTraceStatus }) => {
     const app = await appWith(REVIEW_FIXTURE);
     const write = vi.spyOn(ReviewRepository.prototype, 'insertReview').mockRejectedValueOnce(new Error('write failed'));
     const writeTrace = vi.spyOn(ReviewRepository.prototype, 'saveRunTrace');
-    if (!traceAvailable) writeTrace.mockRejectedValueOnce(new Error('trace write failed'));
+    for (let attempt = 0; attempt < traceWriteFailures; attempt++) {
+      writeTrace.mockRejectedValueOnce(new Error('trace write failed'));
+    }
     try {
       const { pr } = await setupRepoAndPr(pg.handle.db, workspaceId);
       const agent = (await app.inject({
         method: 'POST', url: '/agents',
-        payload: { name: `Paid Reviewer ${traceAvailable}`, provider: 'openai', model: 'gpt-4.1', system_prompt: 'Review' },
+        payload: { name: `Paid Reviewer ${traceWriteFailures}`, provider: 'openai', model: 'gpt-4.1', system_prompt: 'Review' },
       })).json<{ id: string }>();
       const response = await app.inject({
         method: 'POST', url: `/pulls/${pr.id}/review`, payload: { agentId: agent.id },
@@ -315,8 +321,13 @@ d('A2 reviews + agents (Testcontainers pg)', () => {
       const [run] = await waitForPrRuns(pg.handle.db, pr.id, { expected: 1 });
       expect(run).toMatchObject({ status: 'failed', costUsd: 0.001, error: 'write failed' });
       const trace = await app.inject({ method: 'GET', url: `/runs/${run!.id}/trace` });
-      expect(trace.statusCode).toBe(traceAvailable ? 200 : 404);
-      if (traceAvailable) expect(trace.json().stats.cost_usd).toBe(0.001);
+      expect(trace.statusCode).toBe(expectedTraceStatus);
+      if (expectedTraceStatus === 200) {
+        expect(trace.json()).toMatchObject({
+          stats: { cost_usd: 0.001 },
+          log: expect.arrayContaining([expect.objectContaining({ kind: 'error', msg: 'Run failed: write failed' })]),
+        });
+      }
     } finally {
       write.mockRestore();
       writeTrace.mockRestore();
