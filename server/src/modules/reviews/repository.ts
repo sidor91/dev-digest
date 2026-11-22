@@ -13,17 +13,22 @@ import type { Finding, Intent, RunSummary, RunTrace } from '@devdigest/shared';
  * composes them so its public API stays identical.
  */
 
-import type { FindingRow, PullRow } from '../../db/rows.js';
+import type { AgentRow, FindingRow, PullRow } from '../../db/rows.js';
 export type { FindingRow, PullRow };
 
 export type ReviewRow = typeof t.reviews.$inferSelect;
 
 import * as reviewRepo from './repository/review.repo.js';
 import * as runRepo from './repository/run.repo.js';
+import type { AgentRunCompletion } from './repository/run.repo.js';
 import * as pullRepo from './repository/pull.repo.js';
 
 export class ReviewRepository {
   constructor(private db: Db) {}
+
+  transaction<T>(work: (repo: ReviewRepository) => Promise<T>): Promise<T> {
+    return this.db.transaction((tx) => work(new ReviewRepository(tx)));
+  }
 
   // ---- PR lookup (workspace-scoped) --------------------------------------
 
@@ -88,8 +93,8 @@ export class ReviewRepository {
   }
 
   /** Mark a still-running run as cancelled (no-op if it already finished). */
-  cancelRunIfRunning(runId: string): Promise<boolean> {
-    return runRepo.cancelRunIfRunning(this.db, runId);
+  cancelRunIfRunning(workspaceId: string, runId: string): Promise<boolean> {
+    return runRepo.cancelRunIfRunning(this.db, workspaceId, runId);
   }
 
   /** On boot: any run still 'running' is orphaned (its process died / restarted),
@@ -137,34 +142,11 @@ export class ReviewRepository {
 
   // ---- observability: agent_runs + run_traces ----------------------------
 
-  /** Create an agent_runs row in `running` state; returns its id (= the runId). */
-  createAgentRun(values: {
-    workspaceId: string;
-    agentId: string | null;
-    prId: string;
-    provider: string | null;
-    model: string | null;
-  }): Promise<string> {
-    return runRepo.createAgentRun(this.db, values);
+  createReviewRuns(workspaceId: string, prId: string, agents: AgentRow[]) {
+    return runRepo.createReviewRuns(this.db, workspaceId, prId, agents);
   }
 
-  completeAgentRun(
-    runId: string,
-    values: {
-      status: 'done' | 'failed' | 'cancelled';
-      durationMs: number;
-      tokensIn: number;
-      tokensOut: number;
-      findingsCount: number;
-      grounding: string;
-      /** Review score (0-100); null on failed/cancelled runs. */
-      score?: number | null;
-      /** Findings that tripped the agent's gate; 0 on failed/cancelled runs. */
-      blockers?: number | null;
-      /** Failure reason (status='failed') / cancellation note. Null clears it. */
-      error?: string | null;
-    },
-  ): Promise<void> {
+  completeAgentRun(runId: string, values: AgentRunCompletion): Promise<boolean> {
     return runRepo.completeAgentRun(this.db, runId, values);
   }
 
@@ -178,7 +160,7 @@ export class ReviewRepository {
     return runRepo.saveRunTrace(this.db, runId, trace);
   }
 
-  getRunTrace(runId: string): Promise<RunTrace | undefined> {
-    return runRepo.getRunTrace(this.db, runId);
+  getRunTrace(workspaceId: string, runId: string): Promise<RunTrace | undefined> {
+    return runRepo.getRunTrace(this.db, workspaceId, runId);
   }
 }

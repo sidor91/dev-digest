@@ -1,13 +1,14 @@
-import { describe, it, expect, beforeAll, afterAll } from 'vitest';
+import { describe, it, expect, beforeAll, afterAll, vi } from 'vitest';
 import { startPg, dockerAvailable, type PgFixture } from './helpers/pg.js';
 import { waitForPrRuns } from './helpers/runs.js';
 import { buildApp } from '../src/app.js';
 import { loadConfig } from '../src/platform/config.js';
 import { seed } from '../src/db/seed.js';
-import { MockLLMProvider, MockEmbedder, MockGitClient } from '../src/adapters/mocks.js';
+import { ReviewRepository } from '../src/modules/reviews/repository.js';
+import { MockLLMProvider, MockEmbedder, MockGitClient, MockGitHubClient } from '../src/adapters/mocks.js';
 import * as t from '../src/db/schema.js';
 import { eq } from 'drizzle-orm';
-import type { Review } from '@devdigest/shared';
+import type { PrMeta, Review, RunSummary } from '@devdigest/shared';
 
 const hasDocker = await dockerAvailable();
 const d = hasDocker ? describe : describe.skip;
@@ -110,15 +111,21 @@ d('A2 reviews + agents (Testcontainers pg)', () => {
     await pg?.stop();
   });
 
-  function appWith(structured: unknown, provider: 'openai' | 'openrouter' = 'openai') {
+  function appWith(
+    structured: unknown,
+    provider: 'openai' | 'openrouter' = 'openai',
+    llm = new MockLLMProvider(provider, { structured }),
+  ) {
     return buildApp({
       config: config(),
       db: pg.handle.db,
       overrides: {
         embedder: new MockEmbedder(),
         git: new MockGitClient({ diff: DIFF }),
+        github: new MockGitHubClient({ pulls: [] }),
         llm: {
-          [provider]: new MockLLMProvider(provider, { structured }),
+          openai: provider === 'openai' ? llm : new MockLLMProvider('openai', { structured }),
+          openrouter: provider === 'openrouter' ? llm : new MockLLMProvider('openrouter', { structured }),
         },
       },
     });
@@ -201,6 +208,7 @@ d('A2 reviews + agents (Testcontainers pg)', () => {
     const trace = (await app.inject({ method: 'GET', url: `/runs/${runId}/trace` })).json();
     expect(trace.config.model).toBe('gpt-4.1');
     expect(trace.stats.grounding).toBe('1/2 passed');
+    expect(trace.stats.cost_usd).toBe(0.001);
     expect(trace.log.length).toBeGreaterThan(0);
 
     // agent_runs row populated for A5 to aggregate
@@ -208,8 +216,166 @@ d('A2 reviews + agents (Testcontainers pg)', () => {
     expect(run!.status).toBe('done');
     expect(run!.findingsCount).toBe(1);
     expect(run!.grounding).toBe('1/2 passed');
+    expect(run!.costUsd).toBe(0.001);
+    expect(run!.multiAgentRunId).not.toBeNull();
+
+    await app.inject({ method: 'DELETE', url: `/reviews/${review.id}` });
+    const traceAfterReviewDeletion = await app.inject({ method: 'GET', url: `/runs/${runId}/trace` });
+    expect(traceAfterReviewDeletion.json().stats.cost_usd).toBe(0.001);
 
     await app.close();
+  });
+
+  it('tracks one Run all command and prices the latest settled group within its PR', async () => {
+    const app = await appWith(REVIEW_FIXTURE);
+    const db = pg.handle.db;
+    try {
+      const { repo, pr } = await setupRepoAndPr(db, workspaceId);
+      const { repo: otherRepo, pr: otherPr } = await setupRepoAndPr(db, workspaceId);
+      const response = await app.inject({
+        method: 'POST', url: `/pulls/${pr.id}/review`, payload: { all: true },
+      });
+      expect(response.statusCode).toBe(200);
+      const { runs } = response.json<{ runs: { run_id: string }[] }>();
+      expect(runs.length).toBeGreaterThan(1);
+      const members = await waitForPrRuns(db, pr.id, { expected: runs.length });
+      expect(members.map((run) => run.id).sort()).toEqual(runs.map((run) => run.run_id).sort());
+      expect(new Set(members.map((run) => run.multiAgentRunId)).size).toBe(1);
+      expect(members[0]!.multiAgentRunId).not.toBeNull();
+      expect(members.every((run) => run.settledAt != null)).toBe(true);
+
+      async function createGroup(prId: string, day: number) {
+        const [group] = await db.insert(t.multiAgentRuns).values({
+          workspaceId, prId, ranAt: new Date(Date.UTC(2099, 0, day)),
+        }).returning();
+        return group!.id;
+      }
+      const older = await createGroup(pr.id, 1);
+      const latest = await createGroup(pr.id, 2);
+      const active = await createGroup(pr.id, 3);
+      const separate = await createGroup(otherPr.id, 4);
+      const settledAt = new Date();
+      const [general, security, unknown, running] = await db.insert(t.agentRuns).values([
+        { workspaceId, prId: pr.id, multiAgentRunId: latest, status: 'done', settledAt, costUsd: 0.06 },
+        { workspaceId, prId: pr.id, multiAgentRunId: latest, status: 'done', settledAt, costUsd: 0.0013 },
+        { workspaceId, prId: pr.id, multiAgentRunId: older, status: 'done', settledAt, costUsd: 12 },
+        { workspaceId, prId: pr.id, multiAgentRunId: active, status: 'cancelled' },
+        { workspaceId, prId: otherPr.id, multiAgentRunId: separate, status: 'done', settledAt, costUsd: 99 },
+      ]).returning();
+
+      async function cost(repoId = repo.id, prId = pr.id) {
+        const result = await app.inject({ method: 'GET', url: `/repos/${repoId}/pulls` });
+        expect(result.statusCode).toBe(200);
+        return result.json<PrMeta[]>().find((row) => row.id === prId)!;
+      }
+
+      expect((await cost()).review_cost_usd).toBeCloseTo(0.0613);
+      expect((await cost()).review_cost_is_partial).toBe(false);
+      expect((await cost(otherRepo.id, otherPr.id)).review_cost_usd).toBe(99);
+      expect((await app.inject({ method: 'DELETE', url: `/runs/${running!.id}` })).json()).toEqual({ ok: false });
+
+      // Finishing a previously started command later cannot replace a newer one.
+      await db.update(t.agentRuns).set({ settledAt: new Date() }).where(eq(t.agentRuns.id, unknown!.id));
+      await db.update(t.agentRuns).set({ costUsd: null }).where(eq(t.agentRuns.id, general!.id));
+      expect(await cost()).toMatchObject({ review_cost_usd: 0.0013, review_cost_is_partial: true });
+
+      await app.inject({ method: 'DELETE', url: `/runs/${general!.id}` });
+      expect(await cost()).toMatchObject({ review_cost_usd: 0.0013, review_cost_is_partial: false });
+
+      // A newer settled command with no known price wins over the previous price.
+      await new ReviewRepository(db).reapStaleRunningRuns();
+      const [recovered] = await db.select().from(t.agentRuns).where(eq(t.agentRuns.id, running!.id));
+      expect(recovered).toMatchObject({ status: 'cancelled', settledAt: expect.any(Date) });
+      expect(await cost()).toMatchObject({ review_cost_usd: null, review_cost_is_partial: false });
+      await db.update(t.agentRuns).set({ costUsd: 0 }).where(eq(t.agentRuns.id, running!.id));
+      expect(await cost()).toMatchObject({ review_cost_usd: 0, review_cost_is_partial: false });
+
+      await app.inject({ method: 'DELETE', url: `/runs/${running!.id}` });
+      expect((await cost()).review_cost_usd).toBe(security!.costUsd);
+    } finally {
+      await app.close();
+    }
+  });
+
+  it.each([true, false])('keeps the complete cost after a write failure (trace available: %s)', async (traceAvailable) => {
+    const app = await appWith(REVIEW_FIXTURE);
+    const write = vi.spyOn(ReviewRepository.prototype, 'insertReview').mockRejectedValueOnce(new Error('write failed'));
+    const writeTrace = vi.spyOn(ReviewRepository.prototype, 'saveRunTrace');
+    if (!traceAvailable) writeTrace.mockRejectedValueOnce(new Error('trace write failed'));
+    try {
+      const { pr } = await setupRepoAndPr(pg.handle.db, workspaceId);
+      const agent = (await app.inject({
+        method: 'POST', url: '/agents',
+        payload: { name: `Paid Reviewer ${traceAvailable}`, provider: 'openai', model: 'gpt-4.1', system_prompt: 'Review' },
+      })).json<{ id: string }>();
+      const response = await app.inject({
+        method: 'POST', url: `/pulls/${pr.id}/review`, payload: { agentId: agent.id },
+      });
+      expect(response.statusCode).toBe(200);
+      const [run] = await waitForPrRuns(pg.handle.db, pr.id, { expected: 1 });
+      expect(run).toMatchObject({ status: 'failed', costUsd: 0.001, error: 'write failed' });
+      const trace = await app.inject({ method: 'GET', url: `/runs/${run!.id}/trace` });
+      expect(trace.statusCode).toBe(traceAvailable ? 200 : 404);
+      if (traceAvailable) expect(trace.json().stats.cost_usd).toBe(0.001);
+    } finally {
+      write.mockRestore();
+      writeTrace.mockRestore();
+      await app.close();
+    }
+  });
+
+  it('settles a cancelled model call with its returned price and a workspace-scoped trace', async () => {
+    const llm = new MockLLMProvider('openai', { structured: REVIEW_FIXTURE });
+    const complete = llm.completeStructured.bind(llm);
+    let signalStarted!: () => void;
+    let release!: () => void;
+    const started = new Promise<void>((resolve) => { signalStarted = resolve; });
+    const held = new Promise<void>((resolve) => { release = resolve; });
+    llm.completeStructured = async (req) => {
+      signalStarted();
+      await held;
+      return complete(req);
+    };
+    const app = await appWith(REVIEW_FIXTURE, 'openai', llm);
+    const db = pg.handle.db;
+    try {
+      const { repo, pr } = await setupRepoAndPr(db, workspaceId);
+      const agent = (await app.inject({
+        method: 'POST', url: '/agents',
+        payload: { name: 'Cancellable Reviewer', provider: 'openai', model: 'gpt-4.1', system_prompt: 'Review' },
+      })).json<{ id: string }>();
+      const result = (await app.inject({
+        method: 'POST', url: `/pulls/${pr.id}/review`, payload: { agentId: agent.id },
+      })).json<{ runs: { run_id: string }[] }>();
+      const runId = result.runs[0]!.run_id;
+      await started;
+      await app.inject({ method: 'POST', url: `/runs/${runId}/cancel` });
+      async function summary() {
+        const runs = (await app.inject({ method: 'GET', url: `/pulls/${pr.id}/runs` })).json<RunSummary[]>();
+        return runs.find((run) => run.run_id === runId);
+      }
+
+      expect(await summary()).toMatchObject({ status: 'cancelled', cost_pending: true, cost_usd: null });
+      release();
+      await vi.waitFor(async () => {
+        expect(await summary()).toMatchObject({ status: 'cancelled', cost_pending: false, cost_usd: 0.001 });
+      });
+      const trace = (await app.inject({ method: 'GET', url: `/runs/${runId}/trace` })).json();
+      expect(trace.stats.cost_usd).toBe(0.001);
+      const prCosts = (await app.inject({ method: 'GET', url: `/repos/${repo.id}/pulls` })).json<PrMeta[]>();
+      expect(prCosts.find((row) => row.id === pr.id)?.review_cost_usd).toBe(0.001);
+      expect((await app.inject({ method: 'GET', url: `/pulls/${pr.id}/reviews` })).json()).toEqual([]);
+
+      const [foreignWorkspace] = await db.insert(t.workspaces).values({ name: 'foreign-trace' }).returning();
+      const [foreignRun] = await db.insert(t.agentRuns).values({
+        workspaceId: foreignWorkspace!.id, status: 'done', costUsd: 7,
+      }).returning();
+      await db.insert(t.runTraces).values({ runId: foreignRun!.id, trace });
+      expect((await app.inject({ method: 'GET', url: `/runs/${foreignRun!.id}/trace` })).statusCode).toBe(404);
+    } finally {
+      release();
+      await app.close();
+    }
   });
 
   it('dual-provider structured output: Claude via OpenRouter returns the same Review shape', async () => {
