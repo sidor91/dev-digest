@@ -104,6 +104,25 @@ describe('reviewPullRequest (engine)', () => {
     ).rejects.toThrow('cancelled');
   });
 
+  it('keeps a map-reduce run unpriced if any chunk has an unknown cost', async () => {
+    const llm = new MockLLMProvider('openai', { structured: fixture });
+    const complete = llm.completeStructured.bind(llm);
+    llm.completeStructured = async (req) => ({
+      ...await complete(req),
+      costUsd: llm.calls.length === 1 ? 0.0013 : null,
+    });
+    const diff = await new MockGitClient().diff();
+    const [file] = diff.files;
+    diff.files.push({ ...file!, path: 'src/other.ts' });
+
+    const outcome = await reviewPullRequest({
+      systemPrompt: 'security reviewer', model: 'gpt-4.1', diff, llm, strategy: 'map-reduce',
+    });
+
+    expect(outcome.chunks).toHaveLength(2);
+    expect(outcome.costUsd).toBeNull();
+  });
+
   it('forwards sessionId to every LLM call (OpenRouter session grouping)', async () => {
     const seen: (string | undefined)[] = [];
     const recorder: LLMProvider = {

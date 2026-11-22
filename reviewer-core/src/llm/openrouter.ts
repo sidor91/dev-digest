@@ -62,7 +62,7 @@ export class OpenRouterProvider implements LLMProvider {
     const messages = [...req.messages];
     let tokensIn = 0;
     let tokensOut = 0;
-    let costFromApi: number | null = null;
+    let costUsd: number | null = 0;
     let lastRaw = '';
 
     for (let attempt = 1; attempt <= maxRetries + 1; attempt++) {
@@ -91,11 +91,19 @@ export class OpenRouterProvider implements LLMProvider {
         throw new Error(`OpenRouter returned no choices for ${req.schemaName}${errMsg ? `: ${errMsg}` : ''}`);
       }
       lastRaw = choice.message?.content ?? '';
-      tokensIn += res.usage?.prompt_tokens ?? 0;
-      tokensOut += res.usage?.completion_tokens ?? 0;
+      const promptTokens = res.usage?.prompt_tokens;
+      const completionTokens = res.usage?.completion_tokens;
+      tokensIn += promptTokens ?? 0;
+      tokensOut += completionTokens ?? 0;
       // `usage.cost` is an OpenRouter extension (USD), absent from the OpenAI SDK type.
       const apiCost = (res.usage as { cost?: number } | null | undefined)?.cost;
-      if (typeof apiCost === 'number') costFromApi = (costFromApi ?? 0) + apiCost;
+      let attemptCost: number | null = null;
+      if (typeof apiCost === 'number' && Number.isFinite(apiCost) && apiCost >= 0) {
+        attemptCost = apiCost;
+      } else if (promptTokens != null && completionTokens != null) {
+        attemptCost = this.estimateCost?.(req.model, promptTokens, completionTokens) ?? null;
+      }
+      costUsd = costUsd == null || attemptCost == null ? null : costUsd + attemptCost;
 
       const parsed = parseWithRepair(req.schema, lastRaw);
       if (parsed.ok) {
@@ -104,7 +112,7 @@ export class OpenRouterProvider implements LLMProvider {
           model: req.model,
           tokensIn,
           tokensOut,
-          costUsd: costFromApi ?? this.estimateCost?.(req.model, tokensIn, tokensOut) ?? null,
+          costUsd,
           raw: lastRaw,
           attempts: attempt,
         };

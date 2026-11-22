@@ -65,6 +65,17 @@ describe('OpenAIProvider', () => {
     expect(params).not.toHaveProperty('reasoning_effort');
   });
 
+  it('does not price a structured result when a retry omitted token usage', async () => {
+    create.mockResolvedValueOnce({ ...completion('{"summary":1}'), usage: null });
+    create.mockResolvedValueOnce(completion('{"summary":"ok"}'));
+
+    await expect(provider.completeStructured(request)).resolves.toMatchObject({
+      attempts: 2,
+      tokensIn: 1_000,
+      costUsd: null,
+    });
+  });
+
   it.each([
     [completion(null, 'stop', 'I cannot comply'), 'refused'],
     [completion('{"summary":"ok"}', 'length'), 'token limit'],
