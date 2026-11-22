@@ -72,4 +72,18 @@ describe("RunHistory — outcome badge", () => {
     renderRuns([run({ status: "running", score: null, blockers: null })]);
     expect(screen.getByText("running")).toBeInTheDocument();
   });
+
+  it("shows the settled run's price with its tokens and leaves unknown or pending prices hidden", () => {
+    renderRuns([
+      run({ run_id: "settled", tokens_in: 9_000, tokens_out: 119, cost_usd: 0.0013 }),
+      run({ run_id: "pending", status: "cancelled", cost_pending: true, cost_usd: 1.2 }),
+      run({ run_id: "legacy", cost_usd: null }),
+      run({ run_id: "free", cost_usd: 0 }),
+    ]);
+
+    expect(screen.getByText("$0.0013").parentElement?.parentElement).toHaveTextContent("9,119 tok");
+    expect(screen.getByText("$0.00")).toBeVisible();
+    expect(screen.queryByText("$1.20")).not.toBeInTheDocument();
+    expect(screen.queryByText("Review cost unavailable")).not.toBeInTheDocument();
+  });
 });

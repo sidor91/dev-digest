@@ -97,7 +97,7 @@ export const s = {
   specsWrap: { display: "flex", gap: 6, flexWrap: "wrap" } satisfies CSSProperties,
   specsNone: { color: "var(--text-muted)" } satisfies CSSProperties,
   spec: { fontSize: 12, color: "var(--text-secondary)" } satisfies CSSProperties,
-  statsRow: { display: "flex", gap: 10 } satisfies CSSProperties,
+  statsRow: { display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(110px, 1fr))", gap: 10 } satisfies CSSProperties,
   rawPre: {
     margin: 0,
     padding: "12px 14px",

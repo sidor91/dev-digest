@@ -92,6 +92,7 @@
       "size": "Size",
       "score": "Score",
       "status": "Status",
+      "cost": "Cost",
       "updated": "Updated"
     },
     "filesCount": "{count} files",
@@ -101,9 +102,19 @@
     "emptyAllBody": "No open PRs found for this repo yet. Refresh to sync from GitHub.",
     "emptyStatusBody": "No PRs with status “{status}”."
   },
+  "cost": {
+    "amount": "Review cost {amount}",
+    "unavailable": "Review cost unavailable",
+    "partial": "Partial",
+    "partialHint": "Some agents have an unknown cost. This total includes the available amounts, which may be estimates.",
+    "estimateHint": "Review cost in USD. The amount may be estimated.",
+    "latestHint": "Cost of the latest completed review command. Run all totals the agents in that command."
+  },
   "timeline": {
     "goToReview": "Jump to this run’s findings below",
     "openTrace": "Open run trace & logs",
-    "deleteRun": "Delete run"
+    "openAgentTrace": "Open run trace & logs for {agent}",
+    "deleteRun": "Delete run",
+    "tokens": "{count, number} tok"
   }
 }
