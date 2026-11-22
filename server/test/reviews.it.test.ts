@@ -115,14 +115,16 @@ d('A2 reviews + agents (Testcontainers pg)', () => {
     structured: unknown,
     provider: 'openai' | 'openrouter' = 'openai',
     llm = new MockLLMProvider(provider, { structured }),
+    git = new MockGitClient({ diff: DIFF }),
+    github = new MockGitHubClient({ pulls: [] }),
   ) {
     return buildApp({
       config: config(),
       db: pg.handle.db,
       overrides: {
         embedder: new MockEmbedder(),
-        git: new MockGitClient({ diff: DIFF }),
-        github: new MockGitHubClient({ pulls: [] }),
+        git,
+        github,
         llm: {
           openai: provider === 'openai' ? llm : new MockLLMProvider('openai', { structured }),
           openrouter: provider === 'openrouter' ? llm : new MockLLMProvider('openrouter', { structured }),
@@ -163,6 +165,54 @@ d('A2 reviews + agents (Testcontainers pg)', () => {
 
     await app.close();
   });
+
+  it.each(['current', 'different', 'unreachable'] as const)(
+    'reviews fresh patches only when the GitHub diff is %s and the local clone lacks the head',
+    async (githubDiff) => {
+      const git = new MockGitClient();
+      vi.spyOn(git, 'diff').mockRejectedValue(new Error('PR head is missing from the clone'));
+      const llm = new MockLLMProvider('openai', { structured: REVIEW_FIXTURE });
+      const headSha = 'd4c3b2a1';
+      const github = new MockGitHubClient({ detail: {
+        head_sha: githubDiff === 'different' ? 'a1b2c3d4' : headSha,
+        files_count: 1,
+        files: [{ path: 'src/config.ts', additions: 1, deletions: 0, patch: '@@ -10 +10,2 @@\n port: 3000,\n+ currentHeadOnly: true,' }],
+      } });
+      if (githubDiff === 'unreachable') {
+        vi.spyOn(github, 'getPullRequest').mockRejectedValue(new Error('GitHub unavailable'));
+      }
+      const app = await appWith(REVIEW_FIXTURE, 'openai', llm, git, github);
+      try {
+        const db = pg.handle.db;
+        const { pr } = await setupRepoAndPr(db, workspaceId);
+        // Simulate a PR list refresh advancing the head while pr_files still holds the old patch.
+        await db.update(t.pullRequests).set({ headSha }).where(eq(t.pullRequests.id, pr.id));
+        const agent = (await app.inject({
+          method: 'POST', url: '/agents',
+          payload: { name: `Diff Reviewer ${githubDiff}`, provider: 'openai', model: 'gpt-4.1', system_prompt: 'Review the diff.' },
+        })).json<{ id: string }>();
+        const response = await app.inject({
+          method: 'POST', url: `/pulls/${pr.id}/review`, payload: { agentId: agent.id },
+        });
+        expect(response.statusCode).toBe(200);
+        const [run] = await waitForPrRuns(db, pr.id, { expected: 1 });
+        const trace = await app.inject({ method: 'GET', url: `/runs/${run!.id}/trace` });
+        expect(trace.statusCode).toBe(200);
+        if (githubDiff === 'current') {
+          expect(run?.status).toBe('done');
+          expect(trace.json().prompt_assembly.user).toContain('+ currentHeadOnly: true,');
+          expect(trace.json().prompt_assembly.user).not.toContain('stripeKey');
+        } else {
+          expect(run?.status).toBe('failed');
+          expect(run?.error).toContain(headSha);
+          expect(llm.calls).toHaveLength(0);
+          expect((await app.inject({ url: `/pulls/${pr.id}/reviews` })).json()).toEqual([]);
+        }
+      } finally {
+        await app.close();
+      }
+    },
+  );
 
   it('runs a review: map-reduce + grounding drops the hallucinated finding, keeps the valid one', async () => {
     const app = await appWith(REVIEW_FIXTURE);

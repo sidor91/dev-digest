@@ -40,10 +40,6 @@ export class ReviewRepository {
     return pullRepo.getRepo(this.db, repoId);
   }
 
-  getPrFiles(prId: string): Promise<(typeof t.prFiles.$inferSelect)[]> {
-    return pullRepo.getPrFiles(this.db, prId);
-  }
-
   // ---- reviews + findings -------------------------------------------------
 
   insertReview(values: {
