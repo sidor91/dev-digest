@@ -1,0 +1,22 @@
+{
+  "name": "Review cost follows the latest group and matches the agent trace",
+  "description": "Read the seeded Run all total, open Agent runs, and verify the Security Reviewer cost in the timeline and its trace. Uses a freshly seeded local stack without model calls.",
+  "steps": [
+    { "cmd": ["open", "{BASE}/"], "label": "load the pull request list" },
+    { "cmd": ["wait", "--url", "/pulls"], "label": "land on Pull Requests" },
+    { "cmd": ["wait", "--text", "$0.0613"], "label": "latest review group shows the combined cost" },
+    { "cmd": ["set", "viewport", "390", "844"], "label": "switch the list to a narrow window" },
+    { "cmd": ["scrollintoview", "[aria-label='Pull Requests'] data"], "label": "the Cost column remains reachable" },
+    { "cmd": ["set", "viewport", "1280", "900"], "label": "restore the wide list" },
+    { "cmd": ["find", "text", "Add rate limiting to public API endpoints", "click"], "label": "open PR #482" },
+    { "cmd": ["wait", "--url", "/pulls/482"], "label": "land on the PR detail" },
+    { "cmd": ["find", "role", "button", "click", "--name", "Agent runs"], "label": "open the Agent runs tab" },
+    { "cmd": ["wait", "--text", "$0.0013"], "label": "timeline shows the Security Reviewer cost" },
+    { "cmd": ["find", "role", "button", "click", "--name", "Open run trace & logs for Security Reviewer"], "label": "open the Security Reviewer trace" },
+    { "cmd": ["wait", "--text", "COST"], "label": "the traced run includes the Cost stat" },
+    { "cmd": ["get", "text", "[role=dialog] data"], "assert": { "stdoutIncludes": "$0.0013" }, "label": "the drawer matches the timeline price" },
+    { "cmd": ["set", "viewport", "390", "844"], "label": "switch to a narrow window" },
+    { "cmd": ["scrollintoview", "[role=dialog] data"], "label": "the cost remains reachable in the narrow drawer" },
+    { "cmd": ["set", "viewport", "1280", "900"], "label": "restore the wide window" }
+  ]
+}
