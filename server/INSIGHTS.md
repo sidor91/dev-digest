@@ -15,6 +15,8 @@
 
 ## Recurring Errors & Fixes
 
+- 2026-11-22 — When a newly added repository shows zero PRs despite open PRs on GitHub, compare `GET /repos/:id/pulls` with GitHub and check `GET /settings/secrets-status`. Cloning and PR import are independent, and an import failure can return HTTP 200 with an empty local list. Use `Container.githubForPullReads` to allow public PR reads without a token and preserve authenticated access when configured. Evidence: `server/src/modules/pulls/routes.ts` (`GET /repos/:id/pulls`) and the tokenless import regression in `server/test/integration.it.test.ts`.
+
 ## Session Notes
 
 ## Open Questions

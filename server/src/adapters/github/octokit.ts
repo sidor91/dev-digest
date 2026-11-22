@@ -23,14 +23,14 @@ function mapStatus(state: string, merged: boolean | undefined): PrStatus {
 }
 
 /**
- * GitHubClient over Octokit REST — thin. PAT auth (fine-grained).
+ * GitHubClient over Octokit REST. A PAT enables authenticated operations.
  * Reads PR list/detail/files/commits/issue; posts reviews; opens PRs.
  */
 export class OctokitGitHubClient implements GitHubClient {
   private octokit: Octokit;
 
-  constructor(token: string) {
-    this.octokit = new Octokit({ auth: token });
+  constructor(token?: string) {
+    this.octokit = new Octokit(token ? { auth: token } : undefined);
   }
 
   async listPullRequests(repo: RepoRef): Promise<PrMeta[]> {

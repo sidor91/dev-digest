@@ -30,6 +30,8 @@ import { RepoIntelService } from '../modules/repo-intel/service.js';
 import { type DepGraph, DepCruiseGraph } from '../adapters/depgraph/index.js';
 import { type Tokenizer, TiktokenTokenizer } from '../adapters/tokenizer/index.js';
 
+type PullReader = Pick<GitHubClient, 'listPullRequests' | 'getPullRequest' | 'listReviewComments'>;
+
 /**
  * DI container. One per app instance. Holds config, db, the JobRunner,
  * the SSE bus, and lazily-constructed adapters resolved through SecretsProvider.
@@ -63,6 +65,7 @@ export class Container {
 
   private _git?: GitClient;
   private _github?: GitHubClient;
+  private publicPullReader?: PullReader;
   private _codeIndex?: CodeIndex;
   private _embedder?: Embedder;
   private llmCache = new Map<Provider, LLMProvider>();
@@ -153,11 +156,20 @@ export class Container {
   }
 
   async github(): Promise<GitHubClient> {
+    const client = await this.configuredGitHub();
+    if (!client) throw new ConfigError('GITHUB_TOKEN is not configured');
+    return client;
+  }
+
+  async githubForPullReads(): Promise<PullReader> {
+    return (await this.configuredGitHub()) ?? (this.publicPullReader ??= new OctokitGitHubClient());
+  }
+
+  private async configuredGitHub(): Promise<GitHubClient | undefined> {
     if (this.overrides.github) return this.overrides.github;
     if (this._github) return this._github;
     const token = await this.secrets.get('GITHUB_TOKEN');
-    if (!token) throw new ConfigError('GITHUB_TOKEN is not configured');
-    this._github = new OctokitGitHubClient(token);
+    if (token) this._github = new OctokitGitHubClient(token);
     return this._github;
   }
 
