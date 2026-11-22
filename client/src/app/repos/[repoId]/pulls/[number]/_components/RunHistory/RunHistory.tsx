@@ -4,7 +4,7 @@ import React from "react";
 import { useTranslations } from "next-intl";
 import { Badge, Icon, CircularScore, type IconName } from "@devdigest/ui";
 import type { RunSummary, PrCommit } from "@devdigest/shared";
-import { ReviewCost } from "@/components/review-cost";
+import { getRunCost, ReviewCost } from "@/components/review-cost";
 
 /**
  * PR timeline — every agent run interleaved with the PR's commits, newest-first
@@ -150,7 +150,8 @@ export function RunHistory({
         const r = item.run;
         const o = outcomeOf(r);
         const settled = r.status === "done";
-        const hasCost = !r.cost_pending && r.status !== "running" && r.cost_usd != null;
+        const cost = getRunCost(r);
+        const hasCost = cost != null;
         const hasTokens = (settled || hasCost) && (r.tokens_in != null || r.tokens_out != null);
         return (
           <div key={`run:${r.run_id}`} style={rowStyle}>
@@ -204,7 +205,7 @@ export function RunHistory({
                 <span className="mono">
                   {hasTokens && t("timeline.tokens", { count: (r.tokens_in ?? 0) + (r.tokens_out ?? 0) })}
                   {hasTokens && hasCost && <span aria-hidden="true"> · </span>}
-                  {hasCost && <ReviewCost amount={r.cost_usd} />}
+                  {hasCost && <ReviewCost amount={cost} />}
                 </span>
               )}
             </div>

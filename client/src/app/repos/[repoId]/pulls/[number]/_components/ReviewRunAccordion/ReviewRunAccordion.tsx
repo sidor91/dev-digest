@@ -1,5 +1,5 @@
 /* ReviewRunAccordion — one collapsible review RUN (a single agent's pass over
-   the PR). Header shows agent + verdict + counts + score + when it ran; the
+   the PR). Header shows agent + verdict + counts + score + cost + when it ran. The
    body holds that run's VerdictBanner summary and its own FindingsPanel. A PR
    can have many runs (different agents / re-runs over time) — each is separate
    and collapsible so older runs don't bury the latest. */
@@ -8,6 +8,7 @@
 import React from "react";
 import { Icon, Badge } from "@devdigest/ui";
 import type { ReviewRecord, Verdict } from "@devdigest/shared";
+import { ReviewCost } from "@/components/review-cost";
 import { FindingsPanel } from "../FindingsPanel";
 import { VerdictBanner } from "../VerdictBanner";
 import { useDeleteReview } from "../../../../../../../lib/hooks/reviews";
@@ -26,6 +27,7 @@ function formatWhen(iso: string): string {
 export function ReviewRunAccordion({
   review,
   prId,
+  costUsd,
   defaultOpen = false,
   repoFullName,
   headSha,
@@ -34,6 +36,7 @@ export function ReviewRunAccordion({
 }: {
   review: ReviewRecord;
   prId: string;
+  costUsd?: number | null;
   defaultOpen?: boolean;
   repoFullName?: string | null;
   headSha?: string | null;
@@ -102,6 +105,11 @@ export function ReviewRunAccordion({
           <Badge mono color="var(--text-secondary)">
             {review.score}
           </Badge>
+        )}
+        {costUsd != null && (
+          <span style={{ fontSize: 12, color: "var(--text-secondary)", whiteSpace: "nowrap" }}>
+            <ReviewCost amount={costUsd} />
+          </span>
         )}
         <span className="mono" style={{ fontSize: 12, color: "var(--text-muted)" }}>
           {formatWhen(review.created_at)}

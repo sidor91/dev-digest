@@ -2,6 +2,7 @@
 
 import React from "react";
 import { useFormatter, useTranslations } from "next-intl";
+import type { RunSummary } from "@devdigest/shared";
 
 const USD: Intl.NumberFormatOptions = {
   style: "currency",
@@ -11,6 +12,10 @@ const USD: Intl.NumberFormatOptions = {
 };
 const MIN_VISIBLE_COST = 0.0001;
 
+export function getRunCost(run: RunSummary) {
+  return run.cost_pending || run.status === "running" ? null : run.cost_usd;
+}
+
 export function ReviewCost({ amount, partial = false }: {
   amount: number | null | undefined;
   partial?: boolean;
@@ -19,7 +24,7 @@ export function ReviewCost({ amount, partial = false }: {
   const t = useTranslations("prReview.cost");
   if (amount == null) {
     return (
-      <span title={t("unavailable")}>
+      <span className="relative" title={t("unavailable")}>
         <span aria-hidden="true">—</span>
         <span className="sr-only">{t("unavailable")}</span>
       </span>
@@ -31,7 +36,7 @@ export function ReviewCost({ amount, partial = false }: {
     : format.number(amount, USD);
 
   return (
-    <span title={partial ? t("partialHint") : t("estimateHint")}>
+    <span className="relative" title={partial ? t("partialHint") : t("estimateHint")}>
       <data value={amount} className="mono" aria-hidden="true">{display}</data>
       <span className="sr-only">{t("amount", { amount: display })}</span>
       {partial && (
