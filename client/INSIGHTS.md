@@ -13,6 +13,8 @@
 
 ## Recurring Errors & Fixes
 
+- 2026-11-22 — A running Next.js dev process can still hold port 3000 while returning HTTP 500 after its local dependencies disappear. If the log reports a missing `next/dist/compiled/jest-worker/processChild.js`, check `client/node_modules/next` and restore dependencies with pnpm 10 and `install --frozen-lockfile`. The local page recovered after that install in the existing process. pnpm 12 rejected this lockfile because it ignores the `pnpm.overrides` in `client/package.json`. Evidence: `client/pnpm-lock.yaml` (`overrides`), `.github/workflows/client.yml` (pnpm setup), and the local PR page before and after installation.
+
 ## Session Notes
 
 ## Open Questions
