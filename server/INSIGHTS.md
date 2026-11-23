@@ -17,6 +17,9 @@
 
 ## Tool & Library Notes
 
+- 2026-11-22 — When a reviewer flags an optional `and()` condition as invalid SQL, compile the query with `.toSQL()` on the installed Drizzle version. Drizzle 0.45.4 omits `undefined` and retains the other predicates. Verified that `completeAgentRun` can omit the running-status predicate for failed and cancelled runs while preserving the run ID and `settled_at IS NULL` checks. Evidence: `server/src/modules/reviews/repository/run.repo.ts` (`completeAgentRun`) and the compiled PostgreSQL update.
+- 2026-11-22 — When stopping a local DevDigest stack, check container names as well as Compose membership. `docker ps --filter name=devdigest` found a standalone Cost preview database still listening on port 5433 after its web and API processes had exited. The main database uses the named `devdigest_pgdata` volume, while the preview container was configured for automatic removal. Evidence: local Docker inspection and `docker-compose.yml` (the `postgres` service).
+
 ## Recurring Errors & Fixes
 
 - 2026-11-22 — When a newly added repository shows zero PRs despite open PRs on GitHub, compare `GET /repos/:id/pulls` with GitHub and check `GET /settings/secrets-status`. Cloning and PR import are independent, and an import failure can return HTTP 200 with an empty local list. Use `Container.githubForPullReads` to allow public PR reads without a token and preserve authenticated access when configured. Evidence: `server/src/modules/pulls/routes.ts` (`GET /repos/:id/pulls`) and the tokenless import regression in `server/test/integration.it.test.ts`.
