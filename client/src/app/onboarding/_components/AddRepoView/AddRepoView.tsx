@@ -1,5 +1,5 @@
 /* AddRepoView — add-repository screen body. URL only. API keys (OpenAI /
-   OpenRouter / GitHub PAT) are NOT entered here; they live in Settings → API
+   Anthropic / GitHub PAT) are NOT entered here; they live in Settings → API
    Keys and don't change per repo. Escapable: Esc or the close button returns
    to the app. */
 "use client";

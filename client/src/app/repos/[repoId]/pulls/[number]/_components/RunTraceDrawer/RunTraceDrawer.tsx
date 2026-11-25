@@ -25,8 +25,6 @@ export interface RunTraceDrawerProps {
   findings?: FindingRecord[];
   /** When true, the drawer defaults to the live log and streams SSE. */
   running?: boolean;
-  /** Wait for final persistence even if the run was already marked cancelled. */
-  pending?: boolean;
   onClose: () => void;
 }
 
@@ -41,7 +39,6 @@ export default function RunTraceDrawer({
   prNumber,
   findings = [],
   running = false,
-  pending = false,
   onClose,
 }: RunTraceDrawerProps) {
   const t = useTranslations("runs");
@@ -49,8 +46,7 @@ export default function RunTraceDrawer({
   const { events, running: liveRunning } = useRunEvents(running ? [runId] : []);
   // Load the persisted trace once we're not (or no longer) running.
   const stillRunning = running && liveRunning;
-  const awaitingTrace = running || pending;
-  const { data: trace, isLoading } = useRunTrace(runId, !awaitingTrace);
+  const { data: trace, isLoading } = useRunTrace(runId, !stillRunning);
 
   // Copy the model's raw output to the clipboard (footer button), with a brief
   // visual confirmation. Disabled until the trace (and its raw output) loads.
@@ -65,7 +61,7 @@ export default function RunTraceDrawer({
   const log: LogLine[] = eventsToLog(events);
   // When historical, fall back to the trace's persisted log for the Live-log tab.
   const persistedLog: LogLine[] = traceLog(trace);
-  const shownLog = running || !trace ? log : persistedLog;
+  const shownLog = running ? log : persistedLog;
 
   const prCtx = prNumber != null ? `${t("drawer.pr", { number: prNumber })} · ` : "";
   const subtitle = `${prCtx}${stillRunning ? t("drawer.running") : t("drawer.completed")}`;
@@ -93,9 +89,9 @@ export default function RunTraceDrawer({
       <Tabs tabs={[...TABS]} value={tab} onChange={setTab} pad="0" />
       <div style={s.tabBody}>
         {tab === "trace" ? (
-          awaitingTrace || (isLoading && !trace) ? (
+          isLoading && !trace ? (
             <div style={s.emptyNote}>
-              {awaitingTrace ? t("drawer.tracePending") : t("drawer.loadingTrace")}
+              {stillRunning ? t("drawer.tracePending") : t("drawer.loadingTrace")}
             </div>
           ) : trace ? (
             <TraceBody trace={trace} findings={findings} />

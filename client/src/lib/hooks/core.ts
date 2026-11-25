@@ -99,7 +99,7 @@ export function useDeleteRepo() {
 }
 
 // ---- Pull requests (F1: GET /repos/:id/pulls, GET /pulls/:id) ----
-export function usePulls(repoId: string | null | undefined, refetchOnMount: true | "always" = true) {
+export function usePulls(repoId: string | null | undefined) {
   return useQuery({
     queryKey: ["pulls", repoId],
     queryFn: () => api.get<PrMeta[]>(`/repos/${repoId}/pulls`),
@@ -107,7 +107,6 @@ export function usePulls(repoId: string | null | undefined, refetchOnMount: true
     // Auto-refresh PR statuses: re-sync from GitHub every 60s while the page is
     // open, and whenever the window regains focus.
     refetchInterval: 60_000,
-    refetchOnMount,
     refetchOnWindowFocus: true,
   });
 }

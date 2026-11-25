@@ -9,8 +9,6 @@ interface Price {
 
 const PRICING: Record<string, Price> = {
   // OpenAI (approximate public list prices, USD / 1M tokens)
-  'gpt-6.2-astra': { in: 8.0, out: 40.0 },
-  'gpt-6.2-sol': { in: 2.0, out: 10.0 },
   'gpt-5.5': { in: 5.0, out: 30.0 },
   'gpt-5.4': { in: 2.5, out: 15.0 },
   'gpt-5.4-mini': { in: 0.75, out: 4.5 },
@@ -22,6 +20,10 @@ const PRICING: Record<string, Price> = {
   'gpt-4o': { in: 2.5, out: 10.0 },
   'gpt-4o-mini': { in: 0.15, out: 0.6 },
   'text-embedding-3-small': { in: 0.02, out: 0 },
+  // Anthropic
+  'claude-3-5-sonnet-latest': { in: 3.0, out: 15.0 },
+  'claude-3-5-haiku-latest': { in: 0.8, out: 4.0 },
+  'claude-3-opus-latest': { in: 15.0, out: 75.0 },
   // OpenRouter (CI runner, cheap models). Slugs + prices are APPROXIMATE and
   // must be confirmed against openrouter.ai/models before relying on cost.
   // Unknown slugs fall through to null cost (explicitly flagged), which is safe.

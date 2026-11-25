@@ -66,33 +66,3 @@ tokens) as surfaced by the studio's model list; verify live before relying on th
 Because `score` and the merge gate are derived deterministically from the grounded
 findings (not the model's self-report), the comparison is apples-to-apples across
 models — only the findings and their severities change.
-
-## Compare OpenAI and OpenRouter on fixed inputs
-
-From `server/`, run `pnpm exec tsx scripts/compare-review-models.ts` with
-`OPENAI_API_KEY` and `OPENROUTER_API_KEY` configured. The command uses synthetic
-diffs and the built-in General Reviewer prompt. It writes one JSON record per
-model and diff, without posting reviews or accessing the database. Run it with
-`--fixtures-only` to inspect the inputs without credentials or API calls.
-
-Compare the grounded findings against the expected defects in each record.
-Check the rationale as well as the cited line before marking a defect as found.
-Review false blocks on the clean diff, failed responses, duration, and cost.
-The comparison validates the first structured response without sending a repair prompt.
-OpenAI cost uses the adapter's standard list-price estimate. OpenRouter cost
-uses reported provider usage when available.
-
-Before changing the default model, record which known defects each model found
-or missed, confirm that the candidate returned valid structured results for all
-fixtures and caught every known critical defect, and record the selected model
-in the migration change.
-
-## Development default
-
-Keep DeepSeek V4 Flash through OpenRouter for new reviewers during local
-development. In the six-request comparison, each model found both seeded
-defects and approved the clean diff. Sol and Sonnet both cited the changed
-lines, while DeepSeek cited adjacent lines. The two DeepSeek runs cost
-$0.00033, compared with about $0.01326 for Sol and $0.02914 for Sonnet.
-GPT-6.2 Sol is the replacement for existing direct Anthropic configurations.
-Use representative project PRs to pick the production default.

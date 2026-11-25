@@ -2,7 +2,6 @@
 
 import React, { useCallback } from "react";
 import { Icon, Badge, Button, SectionLabel, EmptyState } from "@devdigest/ui";
-import { getRunCost } from "@/components/review-cost";
 import { RunStatus } from "../RunStatus";
 import { RunHistory } from "../RunHistory/RunHistory";
 import { ReviewRunAccordion } from "../ReviewRunAccordion";
@@ -71,7 +70,6 @@ export function FindingsTab({
   const handleGoToReview = useCallback((runId: string) => {
     setTarget((p) => ({ runId, n: (p?.n ?? 0) + 1 }));
   }, []);
-  const costByRunId = new Map(prRuns?.map((run) => [run.run_id, getRunCost(run)]));
 
   return (
     <section>
@@ -161,7 +159,6 @@ export function FindingsTab({
             key={review.id}
             review={review}
             prId={prId}
-            costUsd={review.run_id ? costByRunId.get(review.run_id) : undefined}
             defaultOpen={i === 0}
             repoFullName={repoFullName}
             headSha={headSha}

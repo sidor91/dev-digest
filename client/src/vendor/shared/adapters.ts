@@ -5,7 +5,6 @@ import type {
   IssueMeta,
   PrReviewComment,
 } from './contracts/platform.js';
-import { Provider } from './contracts/knowledge.js';
 
 /**
  * Adapter interfaces. ALL external calls go behind these interfaces.
@@ -16,7 +15,7 @@ import { Provider } from './contracts/knowledge.js';
 // ---------- LLM ----------
 export const ModelInfo = z.object({
   id: z.string(),
-  provider: Provider,
+  provider: z.enum(['openai', 'anthropic', 'openrouter']),
   label: z.string().nullish(),
   created: z.number().int().nullish(),
   /** Pricing in USD per 1M tokens (when the provider exposes it, e.g. OpenRouter). */
@@ -75,7 +74,7 @@ export interface StructuredResult<T> {
 }
 
 export interface LLMProvider {
-  readonly id: Provider;
+  readonly id: 'openai' | 'anthropic';
   listModels(): Promise<ModelInfo[]>;
   complete(req: CompletionRequest): Promise<CompletionResult>;
   completeStructured<T>(req: StructuredRequest<T>): Promise<StructuredResult<T>>;
@@ -231,7 +230,7 @@ export interface AuthProvider {
 // ---------- Secrets (pluggable; MVP = LocalSecretsProvider) ----------
 export type SecretKey =
   | 'OPENAI_API_KEY'
-  | 'OPENROUTER_API_KEY'
+  | 'ANTHROPIC_API_KEY'
   | 'GITHUB_TOKEN'
   | 'DATABASE_URL'
   | (string & {});

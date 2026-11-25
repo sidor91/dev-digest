@@ -16,7 +16,7 @@ import { rowsToSettings } from './helpers.js';
  * F1 — settings module.
  *   GET  /settings                 → current non-secret prefs
  *   PUT  /settings                 → upsert prefs (key/value rows)
- *   POST /settings/test-connection → test a provider key (OpenAI/OpenRouter/GitHub)
+ *   POST /settings/test-connection → test a provider key (OpenAI/Anthropic/GitHub)
  *
  * Secrets are NOT stored here — only non-secret prefs. test-connection reads
  * the key via SecretsProvider and does a cheap live call (listModels / GET user).

@@ -41,7 +41,7 @@ command -v pnpm   >/dev/null || { echo "pnpm not found (npm i -g pnpm)"; exit 1;
 for dir in server client; do
   if [ ! -f "$dir/.env" ] && [ -f "$dir/.env.example" ]; then
     cp "$dir/.env.example" "$dir/.env"
-    warn "created $dir/.env from .env.example — add your API keys (OPENROUTER_API_KEY/OPENAI_API_KEY/GITHUB_TOKEN) in server/.env"
+    warn "created $dir/.env from .env.example — add your API keys (OPENAI/ANTHROPIC/GITHUB_TOKEN) in server/.env"
   fi
 done
 

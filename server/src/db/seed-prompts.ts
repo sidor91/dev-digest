@@ -199,7 +199,7 @@ findings with a concrete mechanism — not speculation.
   (max ~10). pgvector is used for embedding similarity search.
 - Concurrency: p-queue controls fan-out to external services.
 - External I/O: octokit (GitHub REST/GraphQL, rate-limited), simple-git (repo
-  clones), @vscode/ripgrep (subprocess code search), OpenAI/OpenRouter LLM calls.
+  clones), @vscode/ripgrep (subprocess code search), Anthropic/OpenAI LLM calls.
 
 # What to look for (priority order)
 

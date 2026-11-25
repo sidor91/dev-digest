@@ -6,7 +6,6 @@ import type {
   CodeIndex,
   Embedder,
   LLMProvider,
-  Provider,
 } from '@devdigest/shared';
 import type { AppConfig } from './config.js';
 import type { Db } from '../db/client.js';
@@ -18,6 +17,7 @@ import { OctokitGitHubClient } from '../adapters/github/octokit.js';
 import { SimpleGitClient } from '../adapters/git/simple-git.js';
 import { RipgrepCodeIndex } from '../adapters/codeindex/ripgrep.js';
 import { OpenAIProvider } from '../adapters/llm/openai.js';
+import { AnthropicProvider } from '../adapters/llm/anthropic.js';
 import { OpenAIEmbedder } from '../adapters/embedder/openai.js';
 import { OpenRouterProvider } from '@devdigest/reviewer-core';
 import { estimateCost } from '../adapters/llm/pricing.js';
@@ -29,8 +29,6 @@ import type { RepoIntel } from '../modules/repo-intel/types.js';
 import { RepoIntelService } from '../modules/repo-intel/service.js';
 import { type DepGraph, DepCruiseGraph } from '../adapters/depgraph/index.js';
 import { type Tokenizer, TiktokenTokenizer } from '../adapters/tokenizer/index.js';
-
-type PullReader = Pick<GitHubClient, 'listPullRequests' | 'getPullRequest' | 'listReviewComments'>;
 
 /**
  * DI container. One per app instance. Holds config, db, the JobRunner,
@@ -47,7 +45,7 @@ export interface ContainerOverrides {
   codeIndex?: CodeIndex;
   embedder?: Embedder;
   /** Pre-built providers by id (skip key lookup). */
-  llm?: Partial<Record<Provider, LLMProvider>>;
+  llm?: Partial<Record<'openai' | 'anthropic' | 'openrouter', LLMProvider>>;
   /** repo-intel facade (T1.1+) — tests inject mock RepoIntel implementations. */
   repoIntel?: RepoIntel;
   /** repo-intel T3 adapters — only the indexer pipeline reads these. */
@@ -65,10 +63,9 @@ export class Container {
 
   private _git?: GitClient;
   private _github?: GitHubClient;
-  private publicPullReader?: PullReader;
   private _codeIndex?: CodeIndex;
   private _embedder?: Embedder;
-  private llmCache = new Map<Provider, LLMProvider>();
+  private llmCache = new Map<string, LLMProvider>();
 
   // Shared repositories for cross-cutting entities (agents, reviews/pulls,
   // runs). Constructed here, in the composition root, so consuming modules use
@@ -140,7 +137,7 @@ export class Container {
    * Live OpenRouter pricing for cost attribution. The lister builds a bare
    * OpenRouter provider just for `/models` (no estimator needed) and degrades to
    * `[]` when no key is configured; the static `estimateCost` table is the
-   * fallback for OpenAI and a cold/cold-failed cache.
+   * fallback for OpenAI/Anthropic and a cold/cold-failed cache.
    */
   get priceBook(): PriceBook {
     this._priceBook ??= new PriceBook(async () => {
@@ -156,25 +153,16 @@ export class Container {
   }
 
   async github(): Promise<GitHubClient> {
-    const client = await this.configuredGitHub();
-    if (!client) throw new ConfigError('GITHUB_TOKEN is not configured');
-    return client;
-  }
-
-  async githubForPullReads(): Promise<PullReader> {
-    return (await this.configuredGitHub()) ?? (this.publicPullReader ??= new OctokitGitHubClient());
-  }
-
-  private async configuredGitHub(): Promise<GitHubClient | undefined> {
     if (this.overrides.github) return this.overrides.github;
     if (this._github) return this._github;
     const token = await this.secrets.get('GITHUB_TOKEN');
-    if (token) this._github = new OctokitGitHubClient(token);
+    if (!token) throw new ConfigError('GITHUB_TOKEN is not configured');
+    this._github = new OctokitGitHubClient(token);
     return this._github;
   }
 
   /** Resolve an LLM provider by id; constructs from the secret key, cached. */
-  async llm(id: Provider): Promise<LLMProvider> {
+  async llm(id: 'openai' | 'anthropic' | 'openrouter'): Promise<LLMProvider> {
     const injected = this.overrides.llm?.[id];
     if (injected) return injected;
     const cached = this.llmCache.get(id);
@@ -190,7 +178,7 @@ export class Container {
    * by "Test connection" so a typo is verified before it can overwrite a
    * working key.
    */
-  async llmWithKey(id: Provider, key: string): Promise<LLMProvider> {
+  async llmWithKey(id: 'openai' | 'anthropic' | 'openrouter', key: string): Promise<LLMProvider> {
     const injected = this.overrides.llm?.[id];
     if (injected) return injected;
     return this.buildLlm(id, key);
@@ -202,7 +190,7 @@ export class Container {
   }
 
   private async buildLlm(
-    id: Provider,
+    id: 'openai' | 'anthropic' | 'openrouter',
     keyOverride?: string,
   ): Promise<LLMProvider> {
     if (id === 'openai') {
@@ -221,13 +209,15 @@ export class Container {
           this.priceBook.estimate(model, tokensIn, tokensOut),
       });
     }
-    throw new ConfigError(`Unsupported LLM provider: ${id}`);
+    const key = keyOverride ?? (await this.secrets.get('ANTHROPIC_API_KEY'));
+    if (!key) throw new ConfigError('ANTHROPIC_API_KEY is not configured');
+    return new AnthropicProvider(key);
   }
 
   async embedder(): Promise<Embedder> {
     // Injected embedders (tests) always win. Otherwise embeddings are gated by
-    // config: when disabled we throw before constructing the embedding client.
-    // Callers wrap this in try/catch and
+    // config: when disabled we throw BEFORE constructing the OpenAI client, so
+    // the app makes ZERO OpenAI requests. All callers wrap this in try/catch and
     // degrade gracefully (memory/RAG simply returns no hits).
     if (this.overrides.embedder) return this.overrides.embedder;
     if (!this.config.embeddingsEnabled) {
