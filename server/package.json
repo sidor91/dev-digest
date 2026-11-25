@@ -15,7 +15,6 @@
     "db:seed": "tsx src/db/seed.ts"
   },
   "dependencies": {
-    "@anthropic-ai/sdk": "^0.33.1",
     "@ast-grep/napi": "0.43.0",
     "@fastify/autoload": "^6.6.0",
     "@fastify/cors": "^10.1.0",

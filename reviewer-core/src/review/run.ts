@@ -48,7 +48,7 @@ export interface ReviewInput {
   model: string;
   /** The PR's unified diff (already parsed; hunks carry new-side line numbers). */
   diff: UnifiedDiff;
-  /** Injected LLM provider (OpenRouter in CI, OpenAI/Anthropic in the studio). */
+  /** Injected LLM provider (OpenRouter in CI, OpenAI or OpenRouter in the studio). */
   llm: LLMProvider;
   /** 'auto' (default) picks single-pass unless the diff is large + multi-file. */
   strategy?: ReviewStrategy;

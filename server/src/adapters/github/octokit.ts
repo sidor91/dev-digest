@@ -23,14 +23,14 @@ function mapStatus(state: string, merged: boolean | undefined): PrStatus {
 }
 
 /**
- * GitHubClient over Octokit REST — thin. PAT auth (fine-grained).
+ * GitHubClient over Octokit REST. A PAT enables authenticated operations.
  * Reads PR list/detail/files/commits/issue; posts reviews; opens PRs.
  */
 export class OctokitGitHubClient implements GitHubClient {
   private octokit: Octokit;
 
-  constructor(token: string) {
-    this.octokit = new Octokit({ auth: token });
+  constructor(token?: string) {
+    this.octokit = new Octokit(token ? { auth: token } : undefined);
   }
 
   async listPullRequests(repo: RepoRef): Promise<PrMeta[]> {
@@ -71,23 +71,26 @@ export class OctokitGitHubClient implements GitHubClient {
     return withRetry(() =>
       withTimeout(
         (async () => {
-          const { data: pr } = await this.octokit.rest.pulls.get({
+          const params = {
             owner: repo.owner,
             repo: repo.name,
             pull_number: n,
-          });
-          const { data: files } = await this.octokit.rest.pulls.listFiles({
-            owner: repo.owner,
-            repo: repo.name,
-            pull_number: n,
-            per_page: 100,
-          });
+          };
+          const { data: pr } = await this.octokit.rest.pulls.get(params);
+          const files = await this.octokit.paginate(this.octokit.rest.pulls.listFiles, { ...params, per_page: 100 });
           const { data: commits } = await this.octokit.rest.pulls.listCommits({
-            owner: repo.owner,
-            repo: repo.name,
-            pull_number: n,
+            ...params,
             per_page: 100,
           });
+          // The files endpoint is keyed by PR number, so a push can change
+          // the revision while its pages are loading.
+          const { data: current } = await this.octokit.rest.pulls.get({
+            ...params,
+            headers: { 'cache-control': 'no-cache' },
+          });
+          if (current.head.sha !== pr.head.sha || current.base.sha !== pr.base.sha || current.base.ref !== pr.base.ref) {
+            throw new Error(`PR #${n} changed while loading its files`);
+          }
           const linkedIssue = await this.resolveLinkedIssue(repo, pr.body ?? '');
           return {
             number: pr.number,

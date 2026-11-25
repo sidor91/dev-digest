@@ -53,7 +53,6 @@ All sources used to build this security skill, organized by category.
 - **Repository**: https://github.com/agamm/claude-code-owasp
 - **Key innovation**: OWASP Top 10:2025 + ASVS 5.0 + Agentic AI security in one skill
 - **Coverage**: 20+ language-specific security quirks with unsafe/safe code pairs
-- **Install**: `curl -sL https://raw.githubusercontent.com/agamm/claude-code-owasp/main/.claude/skills/owasp-security/SKILL.md -o .claude/skills/owasp-security/SKILL.md --create-dirs`
 
 ### Trail of Bits Security Skills
 - **Repository**: https://github.com/trailofbits/skills

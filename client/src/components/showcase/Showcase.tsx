@@ -213,7 +213,7 @@ export function Gallery() {
         <Donut
           segments={[
             { label: "openai", value: 4.2, color: "var(--accent)" },
-            { label: "anthropic", value: 2.1, color: "var(--ok)" },
+            { label: "openrouter", value: 2.1, color: "var(--ok)" },
           ]}
         />
         <div style={s.w320}>

@@ -9,7 +9,7 @@ import { SettingsApiKeys } from "./SettingsApiKeys";
 const mutateAsync = vi.fn();
 vi.mock("@/lib/hooks", () => ({
   useTestConnection: () => ({ mutateAsync, isPending: false }),
-  useSecretsStatus: () => ({ data: { openai: true, anthropic: false, openrouter: false, github: false } }),
+  useSecretsStatus: () => ({ data: { openai: true, openrouter: false, github: false } }),
 }));
 
 function renderView() {

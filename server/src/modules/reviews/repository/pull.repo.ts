@@ -26,13 +26,6 @@ export async function getRepo(
   return row;
 }
 
-export async function getPrFiles(
-  db: Db,
-  prId: string,
-): Promise<(typeof t.prFiles.$inferSelect)[]> {
-  return db.select().from(t.prFiles).where(eq(t.prFiles.prId, prId));
-}
-
 /**
  * Record the commit a review just ran against, so the PR list can derive
  * `reviewed` vs `needs_review` (head moved since the last review) vs `stale`.

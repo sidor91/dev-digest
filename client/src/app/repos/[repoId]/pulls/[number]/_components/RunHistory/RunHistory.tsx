@@ -4,6 +4,7 @@ import React from "react";
 import { useTranslations } from "next-intl";
 import { Badge, Icon, CircularScore, type IconName } from "@devdigest/ui";
 import type { RunSummary, PrCommit } from "@devdigest/shared";
+import { getRunCost, ReviewCost } from "@/components/review-cost";
 
 /**
  * PR timeline — every agent run interleaved with the PR's commits, newest-first
@@ -149,6 +150,9 @@ export function RunHistory({
         const r = item.run;
         const o = outcomeOf(r);
         const settled = r.status === "done";
+        const cost = getRunCost(r);
+        const hasCost = cost != null;
+        const hasTokens = (settled || hasCost) && (r.tokens_in != null || r.tokens_out != null);
         return (
           <div key={`run:${r.run_id}`} style={rowStyle}>
             <Badge color={o.color} bg={o.bg} icon={o.icon}>
@@ -197,17 +201,24 @@ export function RunHistory({
             </div>
             <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 2, fontSize: 11, color: "var(--text-muted)", flexShrink: 0 }}>
               {r.ran_at && <span>{new Date(r.ran_at).toLocaleTimeString()}</span>}
+              {(hasCost || hasTokens) && (
+                <span className="mono">
+                  {hasTokens && t("timeline.tokens", { count: (r.tokens_in ?? 0) + (r.tokens_out ?? 0) })}
+                  {hasTokens && hasCost && <span aria-hidden="true"> · </span>}
+                  {hasCost && <ReviewCost amount={cost} />}
+                </span>
+              )}
             </div>
             <button
               type="button"
               title={t("timeline.openTrace")}
-              aria-label={t("timeline.openTrace")}
+              aria-label={r.agent_name ? t("timeline.openAgentTrace", { agent: r.agent_name }) : t("timeline.openTrace")}
               onClick={() => onOpenTrace(r.run_id)}
               style={iconBtnStyle}
             >
               <Icon.FileText size={13} />
             </button>
-            {onDelete && r.status !== "running" && (
+            {onDelete && r.status !== "running" && !r.cost_pending && (
               <span
                 role="button"
                 aria-label={t("timeline.deleteRun")}

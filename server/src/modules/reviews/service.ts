@@ -76,17 +76,11 @@ export class ReviewService {
     return this.repo.deleteAgentRun(workspaceId, runId);
   }
 
-  /**
-   * Cancel an in-flight run. Signals a live runner to stop at its next
-   * checkpoint AND marks the DB row cancelled + completes the bus immediately —
-   * so cancel also works for ORPHANED runs (whose background process died on a
-   * server restart) where signalling alone would do nothing.
-   */
-  async cancelRun(runId: string): Promise<void> {
+  /** Request cancellation. The executor closes the stream after saving the final cost. */
+  async cancelRun(workspaceId: string, runId: string): Promise<void> {
+    if (!await this.repo.cancelRunIfRunning(workspaceId, runId)) return;
     this.publish(runId, 'info', 'Cancellation requested — stopping…');
     this.container.runBus.cancel(runId);
-    await this.repo.cancelRunIfRunning(runId);
-    this.container.runBus.complete(runId);
   }
 
   /** Reap runs left 'running' by a previous (now-dead) process. Called on boot. */
@@ -114,19 +108,13 @@ export class ReviewService {
     // Create the agent_run rows up front so a runId is available IMMEDIATELY —
     // the client persists these in global state and subscribes to the SSE
     // stream. The actual (slow) review runs in the background below.
-    const runs: { run_id: string; agent_id: string; agent_name: string }[] = [];
-    const jobs: { agent: AgentRow; runId: string }[] = [];
-    for (const agent of targets) {
-      const runId = await this.repo.createAgentRun({
-        workspaceId,
-        agentId: agent.id,
-        prId,
-        provider: agent.provider,
-        model: agent.model,
-      });
-      runs.push({ run_id: runId, agent_id: agent.id, agent_name: agent.name });
-      jobs.push({ agent, runId });
-    }
+    const created = await this.repo.createReviewRuns(workspaceId, prId, targets);
+    const runIds = new Map(created.map((run) => [run.agentId, run.id]));
+    const jobs = targets.map((agent) => ({ agent, runId: runIds.get(agent.id)! }));
+    const runs = jobs.map(({ agent, runId }) => ({
+      run_id: runId, agent_id: agent.id, agent_name: agent.name,
+    }));
+    if (jobs.length === 0) return { runs, reviews: [] };
 
     // Fire-and-forget: the HTTP response returns now with the runIds; reviews
     // are persisted as each agent finishes and the client refetches on SSE done.
@@ -173,7 +161,7 @@ export class ReviewService {
     );
   }
 
-  async getRunTrace(runId: string): Promise<RunTrace | undefined> {
-    return this.repo.getRunTrace(runId);
+  async getRunTrace(workspaceId: string, runId: string): Promise<RunTrace | undefined> {
+    return this.repo.getRunTrace(workspaceId, runId);
   }
 }
