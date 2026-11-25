@@ -1,12 +1,10 @@
 {
-  "name": "A seeded reviewer opens its configuration editor",
-  "description": "Opens the Security Reviewer from the agents list and checks that the configuration fields render without a model call.",
+  "name": "Agents list renders the seeded reviewer agents",
+  "description": "Loads /agents and confirms a seeded agent (Security Reviewer) is rendered by AgentCard. Exercises the agents list route and its API fetch.",
   "steps": [
     { "cmd": ["open", "{BASE}/agents"], "label": "load the agents page" },
     { "cmd": ["wait", "--url", "/agents"], "label": "agents route reached" },
     { "cmd": ["wait", "--load", "networkidle"], "label": "agents fetch settles" },
-    { "cmd": ["wait", "--text", "Security Reviewer"], "label": "seeded agent card is visible" },
-    { "cmd": ["find", "text", "Security Reviewer", "click"], "label": "open the reviewer editor" },
-    { "cmd": ["wait", "--text", "System prompt"], "label": "editor configuration renders" }
+    { "cmd": ["wait", "--text", "Security Reviewer"], "label": "seeded agent card is visible" }
   ]
 }

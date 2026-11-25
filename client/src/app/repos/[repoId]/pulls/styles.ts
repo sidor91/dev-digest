@@ -1,14 +1,11 @@
 import type { CSSProperties } from "react";
 import { GRID } from "./constants";
 
-const TABLE_MIN_WIDTH = 850;
-
 /** Co-located styles for the PR list page (extracted from inline styles). */
 export const s = {
   row: (hover: boolean): CSSProperties => ({
     display: "grid",
     gridTemplateColumns: GRID,
-    minWidth: TABLE_MIN_WIDTH,
     alignItems: "center",
     gap: 14,
     padding: "12px 20px",
@@ -43,7 +40,6 @@ export const s = {
   } satisfies CSSProperties,
   sizeBadgeBorder: (color: string): CSSProperties => ({ border: `1px solid ${color}` }),
   scoreCell: { display: "flex", alignItems: "center" } satisfies CSSProperties,
-  costCell: { color: "var(--text-secondary)", fontSize: 12 } satisfies CSSProperties,
   updatedCell: {
     fontSize: 12,
     color: "var(--text-muted)",
@@ -94,11 +90,9 @@ export const s = {
     overflow: "hidden",
     background: "var(--bg-elevated)",
   } satisfies CSSProperties,
-  tableScroll: { overflowX: "auto" } satisfies CSSProperties,
   headRow: {
     display: "grid",
     gridTemplateColumns: GRID,
-    minWidth: TABLE_MIN_WIDTH,
     gap: 14,
     padding: "10px 20px",
     borderBottom: "1px solid var(--border)",

@@ -6,7 +6,7 @@ import { join, isAbsolute, resolve } from 'node:path';
 /**
  * Central, zod-validated environment config. Loaded once at startup.
  *
- * NOTE: secret keys (OPENAI/OPENROUTER/GITHUB_TOKEN) are deliberately
+ * NOTE: secret keys (OPENAI/ANTHROPIC/OPENROUTER/GITHUB_TOKEN) are deliberately
  * NOT in this schema. Feature code must access secrets through SecretsProvider,
  * never via process.env or AppConfig — the SecretsProvider is the one chokepoint
  * that reads process.env directly (see adapters/secrets/local.ts). Listing them
@@ -17,8 +17,8 @@ const EnvSchema = z.object({
     .string()
     .default('postgres://devdigest:devdigest@localhost:5432/devdigest'),
   // Memory/RAG embeddings run on OpenAI (text-embedding-3-small, 1536-dim — the
-  // pgvector columns are locked to that). Set EMBEDDINGS_ENABLED=true to enable
-  // embedding requests and turn memory retrieval on.
+  // pgvector columns are locked to that). Default OFF so the app makes ZERO
+  // OpenAI requests; set EMBEDDINGS_ENABLED=true to turn memory retrieval on.
   EMBEDDINGS_ENABLED: z.string().optional(),
   // repo-intel facade (Tier 1). Default ON — reviews get repo skeleton +
   // callers context. Set REPO_INTEL_ENABLED=false to opt out, in which case

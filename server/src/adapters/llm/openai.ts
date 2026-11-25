@@ -15,38 +15,27 @@ import { ExternalServiceError } from '../../platform/errors.js';
 const DEFAULT_TIMEOUT = 60_000;
 const EMBED_MODEL = 'text-embedding-3-small';
 
-type TuningParams = Pick<
-  OpenAI.ChatCompletionCreateParamsNonStreaming,
-  'temperature' | 'max_tokens' | 'max_completion_tokens' | 'reasoning_effort'
->;
+/**
+ * GPT-5 and the o-series reasoning models reject a custom `temperature` (only
+ * the default is allowed) and use `max_completion_tokens` instead of
+ * `max_tokens`. Detect them so we can omit/remap those params.
+ */
+function isReasoningModel(model: string): boolean {
+  return /^(gpt-5|o1|o3|o4)/.test(model);
+}
 
+/** Build the temperature + token-cap params appropriate for the given model. */
 function tuningParams(
   model: string,
   temperature: number | undefined,
   maxTokens: number | undefined,
-): TuningParams {
-  const tokenLimit = maxTokens || undefined;
-  if (model.startsWith('gpt-6.2-')) {
-    return { reasoning_effort: 'medium', max_completion_tokens: tokenLimit };
+): Record<string, number> {
+  if (isReasoningModel(model)) {
+    return maxTokens ? { max_completion_tokens: maxTokens } : {};
   }
-  if (/^(gpt-5|o1|o3|o4)/.test(model)) {
-    return { max_completion_tokens: tokenLimit };
-  }
-  return { temperature: temperature ?? 0, max_tokens: tokenLimit };
-}
-
-function completionText(response: OpenAI.ChatCompletion): string {
-  const choice = response.choices?.[0];
-  if (choice?.message.refusal) {
-    throw new ExternalServiceError('OpenAI refused the request');
-  }
-  if (choice?.finish_reason === 'content_filter') {
-    throw new ExternalServiceError('OpenAI stopped the completion due to its content filter');
-  }
-  if (choice?.finish_reason === 'length') {
-    throw new ExternalServiceError('OpenAI stopped the completion at the token limit');
-  }
-  return choice?.message.content ?? '';
+  const p: Record<string, number> = { temperature: temperature ?? 0 };
+  if (maxTokens) p.max_tokens = maxTokens;
+  return p;
 }
 
 /**
@@ -73,17 +62,18 @@ export class OpenAIProvider implements LLMProvider {
   }
 
   async complete(req: CompletionRequest): Promise<CompletionResult> {
-    const res = await withRetry(() =>
-      withTimeout(
-        this.client.chat.completions.create({
-          model: req.model,
-          messages: req.messages,
-          ...tuningParams(req.model, req.temperature ?? 0.2, req.maxTokens),
-        }),
-        req.timeoutMs ?? DEFAULT_TIMEOUT,
-      ),
+    return withRetry(() =>
+      withTimeout(this.doComplete(req), req.timeoutMs ?? DEFAULT_TIMEOUT),
     );
-    const text = completionText(res);
+  }
+
+  private async doComplete(req: CompletionRequest): Promise<CompletionResult> {
+    const res = await this.client.chat.completions.create({
+      model: req.model,
+      messages: req.messages,
+      ...tuningParams(req.model, req.temperature ?? 0.2, req.maxTokens),
+    });
+    const text = res.choices?.[0]?.message?.content ?? '';
     const tokensIn = res.usage?.prompt_tokens ?? 0;
     const tokensOut = res.usage?.completion_tokens ?? 0;
     return {
@@ -101,7 +91,6 @@ export class OpenAIProvider implements LLMProvider {
     const messages = [...req.messages];
     let tokensIn = 0;
     let tokensOut = 0;
-    let allUsageReported = true;
     let lastRaw = '';
 
     for (let attempt = 1; attempt <= maxRetries + 1; attempt++) {
@@ -119,8 +108,7 @@ export class OpenAIProvider implements LLMProvider {
           req.timeoutMs ?? DEFAULT_TIMEOUT,
         ),
       );
-      lastRaw = completionText(res);
-      allUsageReported &&= res.usage?.prompt_tokens != null && res.usage.completion_tokens != null;
+      lastRaw = res.choices?.[0]?.message?.content ?? '';
       tokensIn += res.usage?.prompt_tokens ?? 0;
       tokensOut += res.usage?.completion_tokens ?? 0;
 
@@ -131,7 +119,7 @@ export class OpenAIProvider implements LLMProvider {
           model: req.model,
           tokensIn,
           tokensOut,
-          costUsd: allUsageReported ? estimateCost(req.model, tokensIn, tokensOut) : null,
+          costUsd: estimateCost(req.model, tokensIn, tokensOut),
           raw: lastRaw,
           attempts: attempt,
         };

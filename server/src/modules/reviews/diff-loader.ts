@@ -1,51 +1,44 @@
 import type { Container } from '../../platform/container.js';
-import type { PrDetail, RepoRef, UnifiedDiff } from '@devdigest/shared';
+import type { UnifiedDiff } from '@devdigest/shared';
 import { parseUnifiedDiff } from '../../adapters/git/diff-parser.js';
-import type { PullRow } from '../../db/rows.js';
+import * as schema from '../../db/schema.js';
+import type { ReviewRepository, PullRow } from './repository.js';
 
 /**
- * Review the head captured when the run was queued. The UI's cached patches
- * have no revision attached, so only Git or live GitHub data can supply the diff.
+ * Load the unified diff for a PR. Prefers a real `git diff base...head`; falls
+ * back to assembling a synthetic unified diff from the persisted pr_files
+ * patches (so the reviewer works even before a clone completes / in tests).
  */
 export async function loadDiff(
   container: Container,
+  repo: ReviewRepository,
+  workspaceId: string,
   pull: PullRow,
-  repoRow: RepoRef,
+  repoRow: typeof schema.repos.$inferSelect,
 ): Promise<UnifiedDiff> {
-  const repo = { owner: repoRow.owner, name: repoRow.name };
   try {
-    const diff = await container.git.diff(repo, pull.base, pull.headSha);
+    const diff = await container.git.diff(
+      { owner: repoRow.owner, name: repoRow.name },
+      pull.base,
+      pull.headSha,
+    );
     if (diff.files.length > 0) return diff;
   } catch {
-    // A shallow clone may not contain the PR head or base branch.
+    /* fall through to pr_files reconstruction */
   }
+  return diffFromPrFiles(repo, pull.id);
+}
 
-  const revision = `PR #${pull.number} at ${pull.headSha}`;
-  let detail: PrDetail;
-  try {
-    const github = await container.githubForPullReads();
-    detail = await github.getPullRequest(repo, pull.number);
-  } catch (cause) {
-    throw new Error(`Could not load the diff for ${revision} from GitHub. Refresh the pull request and try again.`, { cause });
-  }
-  if (detail.head_sha !== pull.headSha || detail.base !== pull.base) {
-    throw new Error(`GitHub returned a different revision for ${revision}. Refresh the pull request and try again.`);
-  }
-  if (detail.files.length !== detail.files_count) {
-    throw new Error(`GitHub returned an incomplete file list for ${revision}.`);
-  }
-
+/** Reconstruct a UnifiedDiff from persisted pr_files patches. */
+export async function diffFromPrFiles(repo: ReviewRepository, prId: string): Promise<UnifiedDiff> {
+  const files = await repo.getPrFiles(prId);
   const parts: string[] = [];
-  for (const f of detail.files) {
+  for (const f of files) {
     if (!f.patch) continue;
     parts.push(`diff --git a/${f.path} b/${f.path}`);
     parts.push(`--- a/${f.path}`);
     parts.push(`+++ b/${f.path}`);
     parts.push(f.patch);
   }
-  const diff = parseUnifiedDiff(parts.join('\n'));
-  if (diff.files.length === 0) {
-    throw new Error(`GitHub returned no reviewable patches for ${revision}.`);
-  }
-  return diff;
+  return parseUnifiedDiff(parts.join('\n'));
 }

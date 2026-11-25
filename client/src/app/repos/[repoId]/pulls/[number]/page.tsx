@@ -43,8 +43,8 @@ export default function PRDetailPage() {
   // navigation AND reload, and self-clears via polling when runs finish.
   const qc = useQueryClient();
   const { data: activeRuns } = usePrActiveRuns(prId);
-  const { data: prRuns, isLoading: runsLoading } = usePrRuns(prId, repoId);
-  const deleteRun = useDeleteRun(prId, repoId);
+  const { data: prRuns } = usePrRuns(prId);
+  const deleteRun = useDeleteRun(prId);
   const liveRunIds = (activeRuns ?? []).map((r) => r.run_id);
   const reviewRunning = liveRunIds.length > 0;
   const cancel = useCancelRun();
@@ -59,7 +59,6 @@ export default function PRDetailPage() {
 
   const tab = search.get("tab") ?? "overview";
   const traceRunId = search.get("trace");
-  const tracedRun = prRuns?.find((run) => run.run_id === traceRunId);
   const setParam = (key: string, val: string | null) => {
     const sp = new URLSearchParams(search.toString());
     if (val == null) sp.delete(key);
@@ -157,7 +156,6 @@ export default function PRDetailPage() {
             onRunDone={() => {
               invalidateActiveRuns();
               invalidateRunHistory();
-              qc.invalidateQueries({ queryKey: ["pulls", repoId] });
               refetchReviews();
             }}
           />
@@ -175,13 +173,10 @@ export default function PRDetailPage() {
 
       {prId && traceRunId && (
         <RunTraceDrawer
-          key={traceRunId}
           runId={traceRunId}
           prNumber={pr.number}
           findings={runs.find((r) => r.run_id === traceRunId)?.findings ?? []}
-          agentName={tracedRun?.agent_name ?? runs.find((r) => r.run_id === traceRunId)?.agent_name}
-          running={tracedRun ? tracedRun.status === "running" : liveRunIds.includes(traceRunId)}
-          pending={runsLoading || tracedRun?.cost_pending}
+          agentName={runs.find((r) => r.run_id === traceRunId)?.agent_name ?? null}
           onClose={() => setParam("trace", null)}
         />
       )}

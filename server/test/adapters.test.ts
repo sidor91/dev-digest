@@ -1,6 +1,5 @@
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect } from 'vitest';
 import { Review } from '@devdigest/shared';
-import { OctokitGitHubClient } from '../src/adapters/github/octokit.js';
 import {
   MockLLMProvider,
   MockGitClient,
@@ -11,42 +10,6 @@ import {
 import { assemblePrompt } from '../src/platform/prompt.js';
 import { groundFindings } from '../src/platform/grounding.js';
 import { estimateCost } from '../src/adapters/llm/pricing.js';
-
-describe('GitHub pull request snapshots', () => {
-  it.each([false, true])('reads every file page and checks whether the head moved (%s)', async (headMoved) => {
-    const pullUrl = 'https://api.github.com/repos/acme/widgets/pulls/42';
-    let metadataReads = 0;
-    vi.stubGlobal('fetch', async (input: string) => {
-      const url = new URL(input);
-      if (url.href === pullUrl) {
-        metadataReads++;
-        return Response.json({
-          number: 42, title: 'Use a stable diff', state: 'open', changed_files: 2,
-          head: { ref: 'feature', sha: headMoved && metadataReads > 1 ? 'new-head' : 'old-head' },
-          base: { ref: 'main', sha: 'base' },
-        });
-      }
-      if (`${url.origin}${url.pathname}` === `${pullUrl}/files`) {
-        const secondPage = url.searchParams.get('page') === '2';
-        return Response.json([{ filename: secondPage ? 'second.ts' : 'first.ts', additions: 1, deletions: 0 }], {
-          headers: secondPage ? {} : { link: `<${pullUrl}/files?per_page=100&page=2>; rel="next"` },
-        });
-      }
-      if (`${url.origin}${url.pathname}` === `${pullUrl}/commits`) return Response.json([]);
-      return Response.json({ message: 'Unexpected request' }, { status: 404 });
-    });
-    try {
-      const detail = new OctokitGitHubClient().getPullRequest({ owner: 'acme', name: 'widgets' }, 42);
-      if (headMoved) {
-        await expect(detail).rejects.toThrow('PR #42 changed while loading its files');
-      } else {
-        await expect(detail).resolves.toMatchObject({ head_sha: 'old-head', files: [{ path: 'first.ts' }, { path: 'second.ts' }] });
-      }
-    } finally {
-      vi.unstubAllGlobals();
-    }
-  });
-});
 
 describe('mock adapters (no network)', () => {
   it('MockGitClient.diff parses into hunks with new line numbers', async () => {

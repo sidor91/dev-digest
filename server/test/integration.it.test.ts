@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeAll, afterAll, vi } from 'vitest';
+import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { sql } from 'drizzle-orm';
 import { eq } from 'drizzle-orm';
 import { startPg, dockerAvailable, type PgFixture } from './helpers/pg.js';
@@ -129,62 +129,6 @@ d('Testcontainers: DB-backed routes via app.inject', () => {
     const second = await app.inject({ method: 'GET', url: `/repos/${repoId}/pulls` });
     expect(second.json().length).toBe(first.json().length);
     await app.close();
-  });
-
-  it('imports and opens a public pull request without a GitHub token', async () => {
-    const app = await buildApp({
-      config: loadConfig({ ...process.env, NODE_ENV: 'test' }),
-      db: pg.handle.db,
-      overrides: { git: new MockGitClient(), secrets: { get: async () => undefined } },
-    });
-    const publicPull = {
-      number: 42,
-      title: 'Public pull request',
-      user: { login: 'contributor' },
-      head: { ref: 'feature', sha: 'abc123' },
-      base: { ref: 'main' },
-      state: 'open',
-      created_at: '2026-01-01T00:00:00Z',
-      updated_at: '2026-01-01T00:00:00Z',
-    };
-    const pullsPath = '/repos/acme/public-pulls/pulls';
-    vi.stubGlobal('fetch', async (input: string, init?: RequestInit) => {
-      const url = new URL(input);
-      if (url.origin !== 'https://api.github.com' || new Headers(init?.headers).has('authorization')) {
-        return Response.json({ message: 'Unexpected GitHub request' }, { status: 403 });
-      }
-      switch (url.pathname) {
-        case pullsPath:
-          return Response.json([publicPull]);
-        case `${pullsPath}/42`:
-          return Response.json({
-            ...publicPull, body: 'Public PR description', additions: 1, deletions: 0, changed_files: 1,
-          });
-        case `${pullsPath}/42/files`:
-          return Response.json([{ filename: 'README.md', additions: 1, deletions: 0, patch: '+Hello' }]);
-        case `${pullsPath}/42/commits`:
-          return Response.json([]);
-        default:
-          return Response.json({ message: 'Not found' }, { status: 404 });
-      }
-    });
-
-    try {
-      const create = await app.inject({
-        method: 'POST', url: '/repos', payload: { url: 'https://github.com/acme/public-pulls' },
-      });
-      expect(create.statusCode).toBe(201);
-      const list = await app.inject({ method: 'GET', url: `/repos/${create.json().id}/pulls` });
-      expect(list.statusCode).toBe(200);
-      expect(list.json()).toMatchObject([{ number: 42, status: 'needs_review', files_count: 1 }]);
-
-      const pr = await app.inject({ method: 'GET', url: `/pulls/${list.json()[0].id}` });
-      expect(pr.json()).toMatchObject({ body: 'Public PR description', files: [{ path: 'README.md' }] });
-    } finally {
-      vi.unstubAllGlobals();
-      await app.container.jobs.onIdle();
-      await app.close();
-    }
   });
 
   it('POST /repos/:id/poll syncs PR list and does NOT trigger a review', async () => {

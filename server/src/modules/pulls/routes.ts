@@ -8,7 +8,6 @@ import { getContext } from '../_shared/context.js';
 import { IdParams } from '../_shared/schemas.js';
 import { AppError, NotFoundError } from '../../platform/errors.js';
 import { deriveReviewStatus } from './status.js';
-import { latestReviewCosts } from './review-cost.js';
 
 /**
  * F1 — pulls module. PR import via Octokit (list + per-PR detail).
@@ -32,42 +31,50 @@ export default async function pullsRoutes(appBase: FastifyInstance) {
       .where(and(eq(t.repos.workspaceId, workspaceId), eq(t.repos.id, req.params.id)));
     if (!repo) throw new NotFoundError('Repo not found');
 
-    // Sync live PRs when GitHub is reachable and keep persisted PRs available offline.
-    let gh: Awaited<ReturnType<typeof container.githubForPullReads>> | undefined;
+    let gh: GitHubClient | null = null;
     try {
-      gh = await container.githubForPullReads();
-      const pulls = await gh.listPullRequests({ owner: repo.owner, name: repo.name });
-      for (const pr of pulls) {
-        await container.db
-          .insert(t.pullRequests)
-          .values({
-            workspaceId,
-            repoId: repo.id,
-            number: pr.number,
-            title: pr.title,
-            author: pr.author,
-            branch: pr.branch,
-            base: pr.base,
-            headSha: pr.head_sha,
-            additions: pr.additions,
-            deletions: pr.deletions,
-            filesCount: pr.files_count,
-            status: pr.status,
-            openedAt: pr.opened_at ? new Date(pr.opened_at) : null,
-            updatedAt: pr.updated_at ? new Date(pr.updated_at) : null,
-          })
-          .onConflictDoUpdate({
-            target: [t.pullRequests.repoId, t.pullRequests.number],
-            set: {
-              title: pr.title,
-              headSha: pr.head_sha,
-              status: pr.status,
-              updatedAt: pr.updated_at ? new Date(pr.updated_at) : null,
-            },
-          });
-      }
+      gh = await container.github();
     } catch (err) {
-      app.log.warn({ err }, 'GitHub PR sync failed; serving persisted PRs');
+      app.log.warn({ err }, 'GitHub client unavailable (no token / offline); serving persisted PRs');
+    }
+
+    // Local-first: sync from GitHub when a token is configured, but never
+    // fail the read — already-imported/seeded PRs stay viewable offline.
+    if (gh) {
+      try {
+        const pulls = await gh.listPullRequests({ owner: repo.owner, name: repo.name });
+        for (const pr of pulls) {
+          await container.db
+            .insert(t.pullRequests)
+            .values({
+              workspaceId,
+              repoId: repo.id,
+              number: pr.number,
+              title: pr.title,
+              author: pr.author,
+              branch: pr.branch,
+              base: pr.base,
+              headSha: pr.head_sha,
+              additions: pr.additions,
+              deletions: pr.deletions,
+              filesCount: pr.files_count,
+              status: pr.status,
+              openedAt: pr.opened_at ? new Date(pr.opened_at) : null,
+              updatedAt: pr.updated_at ? new Date(pr.updated_at) : null,
+            })
+            .onConflictDoUpdate({
+              target: [t.pullRequests.repoId, t.pullRequests.number],
+              set: {
+                title: pr.title,
+                headSha: pr.head_sha,
+                status: pr.status,
+                updatedAt: pr.updated_at ? new Date(pr.updated_at) : null,
+              },
+            });
+        }
+      } catch (err) {
+        app.log.warn({ err }, 'GitHub PR sync skipped (no token / offline); serving persisted PRs');
+      }
     }
 
     const rows = await container.db
@@ -122,11 +129,9 @@ export default async function pullsRoutes(appBase: FastifyInstance) {
       }
     }
 
-    const costByPr = await latestReviewCosts(container.db, workspaceId, prIds);
     const now = Date.now();
     return rows.map((r) => {
       const review = latestReviewByPr.get(r.id);
-      const cost = costByPr.get(r.id);
       return {
         id: r.id,
         number: r.number,
@@ -148,8 +153,6 @@ export default async function pullsRoutes(appBase: FastifyInstance) {
         opened_at: r.openedAt?.toISOString() ?? null,
         updated_at: r.updatedAt?.toISOString() ?? null,
         score: review ? review.score : null,
-        review_cost_usd: cost?.amount ?? null,
-        review_cost_is_partial: cost?.partial ?? false,
       };
     });
   });
@@ -169,9 +172,11 @@ export default async function pullsRoutes(appBase: FastifyInstance) {
       .where(eq(t.repos.id, pr.repoId));
     if (!repo) throw new NotFoundError('Repo not found');
 
-    // Keep persisted files, commits, and description available offline.
+    // Local-first: refresh detail from GitHub when a token is configured;
+    // otherwise serve the persisted files/commits/body (seeded or previously
+    // imported) so PR detail works offline.
     try {
-      const gh = await container.githubForPullReads();
+      const gh = await container.github();
       const detail = await gh.getPullRequest({ owner: repo.owner, name: repo.name }, pr.number);
 
       await container.db.delete(t.prFiles).where(eq(t.prFiles.prId, pr.id));
@@ -212,7 +217,7 @@ export default async function pullsRoutes(appBase: FastifyInstance) {
 
       return { ...detail, id: pr.id };
     } catch (err) {
-      app.log.warn({ err }, 'GitHub PR detail refresh failed; serving persisted detail');
+      app.log.warn({ err }, 'GitHub PR detail refresh skipped (no token / offline); serving persisted detail');
       const files = await container.db.select().from(t.prFiles).where(eq(t.prFiles.prId, pr.id));
       const commits = await container.db.select().from(t.prCommits).where(eq(t.prCommits.prId, pr.id));
       return {
@@ -267,8 +272,14 @@ export default async function pullsRoutes(appBase: FastifyInstance) {
     async (req): Promise<PrReviewComment[]> => {
       const { workspaceId } = await getContext(container, req);
       const { pr, repo } = await resolvePrAndRepo(req.params.id, workspaceId);
+      let gh: GitHubClient;
       try {
-        const gh = await container.githubForPullReads();
+        gh = await container.github();
+      } catch (err) {
+        app.log.warn({ err }, 'GitHub client unavailable; serving no PR comments');
+        return [];
+      }
+      try {
         return await gh.listReviewComments({ owner: repo.owner, name: repo.name }, pr.number);
       } catch (err) {
         app.log.warn({ err }, 'GitHub review-comments fetch skipped (offline / error)');

@@ -32,7 +32,7 @@ export default function PullsPage() {
   const router = useRouter();
   const { activeRepo } = useActiveRepo();
   const repoNotFound = useRepoNotFound(repoId);
-  const { data: pulls, isLoading, isError, error, refetch } = usePulls(repoId, "always");
+  const { data: pulls, isLoading, isError, error, refetch } = usePulls(repoId);
   const refresh = useRefreshRepo();
 
   // Default to "needs review" — the most actionable filter on open.
@@ -96,45 +96,39 @@ export default function PullsPage() {
           onRefresh={() => refresh.mutate(repoId)}
           refreshing={refresh.isPending}
         />
-        <div style={s.tableScroll} role="region" aria-label={t("list.title")} tabIndex={0}>
-          <div style={s.headRow}>
-            {COLUMN_KEYS.map((key, i) => (
-              <div
-                key={key}
-                style={s.headCell(i === COLUMN_KEYS.length - 1)}
-                title={key === "cost" ? t("cost.latestHint") : undefined}
-              >
-                {t(`list.columns.${key}`)}
-              </div>
+        <div style={s.headRow}>
+          {COLUMN_KEYS.map((key, i) => (
+            <div key={key} style={s.headCell(i === COLUMN_KEYS.length - 1)}>
+              {t(`list.columns.${key}`)}
+            </div>
+          ))}
+        </div>
+
+        {isLoading ? (
+          <div style={s.loadingStack}>
+            {Array.from({ length: SKELETON_ROWS }).map((_, i) => (
+              <Skeleton key={i} height={28} />
             ))}
           </div>
-
-          {isLoading ? (
-            <div style={s.loadingStack}>
-              {Array.from({ length: SKELETON_ROWS }).map((_, i) => (
-                <Skeleton key={i} height={28} />
-              ))}
-            </div>
-          ) : isError ? (
-            <ErrorState
-              title={t("list.errorTitle")}
-              body={error instanceof ApiError ? error.message : t("list.errorBody")}
-              onRetry={() => refetch()}
-            />
-          ) : filtered.length === 0 ? (
-            <EmptyState
-              icon="GitPullRequest"
-              title={t("list.emptyTitle")}
-              body={
-                status === "all"
-                  ? t("list.emptyAllBody")
-                  : t("list.emptyStatusBody", { status })
-              }
-            />
-          ) : (
-            filtered.map((pr) => <PRRow key={pr.number} pr={pr} repoId={repoId} />)
-          )}
-        </div>
+        ) : isError ? (
+          <ErrorState
+            title={t("list.errorTitle")}
+            body={error instanceof ApiError ? error.message : t("list.errorBody")}
+            onRetry={() => refetch()}
+          />
+        ) : filtered.length === 0 ? (
+          <EmptyState
+            icon="GitPullRequest"
+            title={t("list.emptyTitle")}
+            body={
+              status === "all"
+                ? t("list.emptyAllBody")
+                : t("list.emptyStatusBody", { status })
+            }
+          />
+        ) : (
+          filtered.map((pr) => <PRRow key={pr.number} pr={pr} repoId={repoId} />)
+        )}
       </div>
     </AppShell>
   );

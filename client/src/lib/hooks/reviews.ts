@@ -37,33 +37,14 @@ export function usePrActiveRuns(prId: string | null | undefined) {
 // ---- Full run history for a PR (every agent_runs row, any status) ----
 /** All runs for a PR — done, failed (with error), cancelled, running. Survives
    reload (DB-backed). Polls while anything is running so it self-updates. */
-const isPendingRun = (run: RunSummary) => run.status === "running" || run.cost_pending === true;
-
-export function usePrRuns(prId: string | null | undefined, repoId: string) {
-  const qc = useQueryClient();
-  const previous = React.useRef<{ prId: typeof prId; pendingByRun: Map<string, boolean> } | null>(null);
-  const query = useQuery({
+export function usePrRuns(prId: string | null | undefined) {
+  return useQuery({
     queryKey: ["pr-runs", prId],
     queryFn: () => api.get<RunSummary[]>(`/pulls/${prId}/runs`),
     enabled: !!prId,
     refetchInterval: (query) =>
-      query.state.data?.some(isPendingRun) ? 4000 : false,
+      (query.state.data ?? []).some((r) => r.status === "running") ? 4000 : false,
   });
-
-  const runs = query.data;
-  React.useEffect(() => {
-    if (!runs) return;
-    const before = previous.current;
-    previous.current = { prId, pendingByRun: new Map(runs.map((run) => [run.run_id, isPendingRun(run)])) };
-    if (!before || before.prId !== prId) return;
-
-    const settled = runs.filter((run) => !isPendingRun(run) && before.pendingByRun.get(run.run_id) !== false);
-    if (settled.length === 0) return;
-    void qc.invalidateQueries({ queryKey: ["pulls", repoId] });
-    for (const run of settled) void qc.invalidateQueries({ queryKey: ["run-trace", run.run_id] });
-  }, [prId, qc, repoId, runs]);
-
-  return query;
 }
 
 // ---- Persisted reviews + findings for a PR ----
@@ -76,18 +57,15 @@ export function usePrReviews(prId: string | null | undefined) {
 }
 
 /** Delete one run from the PR's run history (+ its trace). */
-export function useDeleteRun(prId: string | null | undefined, repoId: string) {
+export function useDeleteRun(prId: string | null | undefined) {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (runId: string) => api.del<{ ok: boolean }>(`/runs/${runId}`),
     // Deleting a run also deletes the review it produced (server-side), so drop
     // both the timeline and the Review Runs list from cache.
-    onSuccess: ({ ok }, runId) => {
-      if (!ok) return;
+    onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["pr-runs", prId] });
       qc.invalidateQueries({ queryKey: ["reviews", prId] });
-      qc.invalidateQueries({ queryKey: ["pulls", repoId] });
-      qc.invalidateQueries({ queryKey: ["run-trace", runId] });
     },
   });
 }
@@ -153,7 +131,6 @@ export function useRunReview() {
       }),
     onSuccess: (_d, { prId }) => {
       qc.invalidateQueries({ queryKey: ["reviews", prId] });
-      qc.invalidateQueries({ queryKey: ["pr-runs", prId] });
     },
   });
 }

@@ -1,6 +1,5 @@
 import { z } from 'zod';
 import { Severity } from './findings.js';
-import { Provider } from './knowledge.js';
 
 /**
  * A6 — Productionize contracts (L08).
@@ -34,7 +33,7 @@ export type PluginSkill = z.infer<typeof PluginSkill>;
 export const PluginAgent = z.object({
   name: z.string(),
   description: z.string(),
-  provider: Provider,
+  provider: z.enum(['openai', 'anthropic']),
   model: z.string(),
   system_prompt: z.string(),
   output_schema: z.unknown().nullish(),

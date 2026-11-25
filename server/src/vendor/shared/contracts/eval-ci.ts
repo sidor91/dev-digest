@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import { Verdict, Finding } from './findings.js';
-import { EvalRun, EvalOwnerKind, Conformance, HistoricalProvider, Provider, CiFailOn } from './knowledge.js';
+import { EvalRun, EvalOwnerKind, Conformance, Provider, CiFailOn } from './knowledge.js';
 
 /**
  * A4 — Eval / CI / Compose / Conformance API contracts (L06).
@@ -246,7 +246,7 @@ export type CiResultArtifact = z.infer<typeof CiResultArtifact>;
 export const ConformanceInput = z.object({
   /** Spec path/id to compare against; if omitted, the first available spec. */
   spec: z.string().nullish(),
-  provider: HistoricalProvider.nullish(),
+  provider: z.enum(['openai', 'anthropic', 'openrouter']).nullish(),
   model: z.string().nullish(),
 });
 export type ConformanceInput = z.infer<typeof ConformanceInput>;

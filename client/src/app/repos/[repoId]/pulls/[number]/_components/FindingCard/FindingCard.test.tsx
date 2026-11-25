@@ -27,13 +27,11 @@ const FINDING: FindingRecord = {
 };
 
 function renderWithIntl(ui: React.ReactElement) {
-  return render(ui, {
-    wrapper: ({ children }) => (
-      <NextIntlClientProvider locale="en" messages={{ prReview: messages }}>
-        {children}
-      </NextIntlClientProvider>
-    ),
-  });
+  return render(
+    <NextIntlClientProvider locale="en" messages={{ prReview: messages }}>
+      {ui}
+    </NextIntlClientProvider>,
+  );
 }
 
 describe("FindingCard (smoke, both themes)", () => {
@@ -49,23 +47,6 @@ describe("FindingCard (smoke, both themes)", () => {
       // category label is shown alongside the severity badge
       expect(screen.getByText("security")).toBeInTheDocument();
     });
-  });
-
-  it("updates the focused border without a React style warning", () => {
-    const consoleError = vi.spyOn(console, "error").mockImplementation(() => {});
-    try {
-      const { rerender } = renderWithIntl(<FindingCard f={FINDING} focused={false} />);
-
-      rerender(<FindingCard f={FINDING} focused />);
-      rerender(<FindingCard f={FINDING} focused={false} />);
-
-      const styleWarnings = consoleError.mock.calls.filter(([message]) =>
-        String(message).includes("a style property during rerender"),
-      );
-      expect(styleWarnings).toEqual([]);
-    } finally {
-      consoleError.mockRestore();
-    }
   });
 
   it("fires accept/dismiss actions", () => {

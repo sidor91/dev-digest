@@ -2,7 +2,6 @@ import 'dotenv/config';
 import { createDb, type Db } from './client.js';
 import * as t from './schema.js';
 import { eq, and } from 'drizzle-orm';
-import type { RunTrace } from '@devdigest/shared';
 import {
   GENERAL_REVIEWER_PROMPT,
   SECURITY_REVIEWER_PROMPT,
@@ -19,7 +18,7 @@ const DEFAULT_MODEL = 'deepseek/deepseek-v4-flash';
  *
  * Seeds: default workspace + system user + membership, default settings,
  * demo repo (acme/payments-api), PR #482 with files/commits, a sample review
- * with a few findings and run costs, and the three built-in agents (General + Security +
+ * with a few findings, and the three built-in agents (General + Security +
  * Performance), all on the default openrouter/deepseek-v4-flash provider+model.
  *
  * Later milestones populate the other tables (skills, conventions, memory, eval,
@@ -97,7 +96,6 @@ export async function seed(db: Db): Promise<{ workspaceId: string; userId: strin
     .select()
     .from(t.pullRequests)
     .where(and(eq(t.pullRequests.repoId, repoId), eq(t.pullRequests.number, 482)));
-  let demoReviewId: string | undefined;
   if (!pr) {
     [pr] = await db
       .insert(t.pullRequests)
@@ -148,7 +146,6 @@ export async function seed(db: Db): Promise<{ workspaceId: string; userId: strin
         model: 'seed',
       })
       .returning();
-    demoReviewId = review!.id;
 
     await db.insert(t.findings).values([
       {
@@ -215,54 +212,15 @@ export async function seed(db: Db): Promise<{ workspaceId: string; userId: strin
       createdBy: userId,
     },
   ];
-  const agentIds = new Map<string, string>();
   for (const a of seedAgents) {
-    let [agent] = await db
+    const [existing] = await db
       .select()
       .from(t.agents)
       .where(and(eq(t.agents.workspaceId, workspaceId), eq(t.agents.name, a.name)));
-    if (!agent) [agent] = await db.insert(t.agents).values(a).returning();
-    agentIds.set(a.name, agent!.id);
-  }
-
-  if (pr && demoReviewId) {
-    await seedDemoReviewRuns(db, workspaceId, pr.id, demoReviewId, agentIds);
+    if (!existing) await db.insert(t.agents).values(a);
   }
 
   return { workspaceId, userId };
-}
-
-async function seedDemoReviewRuns(
-  db: Db,
-  workspaceId: string,
-  prId: string,
-  reviewId: string,
-  agentIds: Map<string, string>,
-) {
-  await db.transaction(async (tx) => {
-    const [group] = await tx.insert(t.multiAgentRuns).values({ workspaceId, prId }).returning();
-    const demos = [
-      { name: 'General Reviewer', costUsd: 0.06, findings: 2, score: 61, blockers: 1 },
-      { name: 'Security Reviewer', costUsd: 0.0013, findings: 0, score: 100, blockers: 0 },
-    ];
-    for (const demo of demos) {
-      const agentId = agentIds.get(demo.name);
-      const [run] = await tx.insert(t.agentRuns).values({
-        workspaceId, prId, agentId, multiAgentRunId: group!.id,
-        provider: DEFAULT_PROVIDER, model: DEFAULT_MODEL, status: 'done', settledAt: group!.ranAt,
-        durationMs: 8200, tokensIn: 8000, tokensOut: 1119, costUsd: demo.costUsd,
-        findingsCount: demo.findings, score: demo.score, blockers: demo.blockers, grounding: `${demo.findings}/${demo.findings} passed`,
-      }).returning();
-      const trace: RunTrace = {
-        config: { agent: demo.name, model: DEFAULT_MODEL, provider: DEFAULT_PROVIDER, pr: 482, source: 'local' },
-        stats: { duration_ms: 8200, tokens_in: 8000, tokens_out: 1119, findings: demo.findings, grounding: run!.grounding! },
-        prompt_assembly: { system: '', user: 'Review PR #482' },
-        tool_calls: [], raw_output: '', memory_pulled: [], specs_read: [], log: [],
-      };
-      await tx.insert(t.runTraces).values({ runId: run!.id, trace });
-      if (demo.findings > 0) await tx.update(t.reviews).set({ runId: run!.id, agentId }).where(eq(t.reviews.id, reviewId));
-    }
-  });
 }
 
 // CLI entrypoint

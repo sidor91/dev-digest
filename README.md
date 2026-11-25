@@ -39,7 +39,7 @@ flowchart LR
   INDEX -->|"repo map = review context"| ENGINE
 
   ENGINE["reviewer-core/<br/>diff + repo map → prompt → LLM<br/>→ structured findings → grounding gate"]
-  LLM["LLM<br/>OpenAI · OpenRouter"]
+  LLM["LLM<br/>OpenAI · Anthropic · OpenRouter"]
   API -->|"run review"| ENGINE
   ENGINE --> LLM
 
@@ -55,7 +55,7 @@ indexes it (the **Indexed** badge) → **import PRs** from GitHub → open a PR 
 calls the LLM, validates every finding against the diff (the **grounding gate**
 drops hallucinated line references), and persists structured findings with a
 severity and score. All local; the only outbound calls are to GitHub (PR data)
-and the configured LLM provider.
+and the LLM (via OpenRouter).
 
 Each package has its own README with deeper diagrams:
 [`client`](client/README.md) (UI route map) ·
@@ -66,7 +66,7 @@ Each package has its own README with deeper diagrams:
 ## What works on day 1
 
 - **Local launch** — one command brings up Postgres (Docker) + API + web.
-- **Settings** — store your LLM API key (OpenAI / OpenRouter) and GitHub token.
+- **Settings** — store your LLM API key (OpenAI / Anthropic) and GitHub token.
 - **Add repository** — paste a repo URL; the server clones and indexes it.
 - **Import pull requests** — pull open PRs and their diff, commits, body, and linked issue.
 - **View diff** — GitHub-like diff in the browser.
@@ -110,11 +110,8 @@ Postgres keeps running (`docker compose down` to stop it).
 
 Flags: `--no-seed` · `--no-client` · `--db-only` · `--help`.
 
-> Add your keys in `server/.env` (`OPENROUTER_API_KEY` / `OPENAI_API_KEY`,
+> Add your keys in `server/.env` (`OPENAI_API_KEY` / `ANTHROPIC_API_KEY`,
 > `GITHUB_TOKEN`) or via the Settings UI at runtime.
-> The built-in reviewers and new agents start on DeepSeek V4 Flash through
-> OpenRouter for low-cost testing. Existing direct Anthropic installations
-> should follow the [migration and rollback guide](server/docs/direct-anthropic-migration.md).
 
 ## Manual steps (what the script does)
 

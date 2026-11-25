@@ -152,9 +152,7 @@ export const ConventionCandidate = z.object({
 export type ConventionCandidate = z.infer<typeof ConventionCandidate>;
 
 // ---- Agents ----
-export const Provider = z.enum(['openai', 'openrouter']);
-// Snapshots and past runs retain the provider that actually ran.
-export const HistoricalProvider = z.enum([...Provider.options, 'anthropic']);
+export const Provider = z.enum(['openai', 'anthropic', 'openrouter']);
 export type Provider = z.infer<typeof Provider>;
 
 // Review execution strategy (matches @devdigest/reviewer-core's ReviewStrategy):
