@@ -1,0 +1,28 @@
+.cost {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 2px 6px;
+  max-inline-size: 100%;
+  font-variant-numeric: tabular-nums;
+}
+
+.amount {
+  min-inline-size: 0;
+  overflow-wrap: anywhere;
+}
+
+.partial {
+  color: var(--text-muted);
+  font-size: 11px;
+}
+
+.visuallyHidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}

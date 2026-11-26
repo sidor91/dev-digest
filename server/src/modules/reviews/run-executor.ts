@@ -1,6 +1,6 @@
 import type { Container } from '../../platform/container.js';
 import type { Provider, Review, RunTrace, UnifiedDiff } from '@devdigest/shared';
-import { reviewPullRequest, countBlockers } from '@devdigest/reviewer-core';
+import { reviewPullRequest, countBlockers, type ReviewOutcome } from '@devdigest/reviewer-core';
 import { RunLogger } from '../../platform/run-logger.js';
 import * as schema from '../../db/schema.js';
 import type { AgentRow } from '../../db/rows.js';
@@ -33,6 +33,8 @@ export type RunOutcome = {
   grounding: string;
   raw: Review;
 };
+
+type RunUsage = Pick<ReviewOutcome, 'tokensIn' | 'tokensOut' | 'costUsd' | 'costSource'>;
 
 /**
  * Owns the background execution of queued agent runs (extracted from
@@ -151,6 +153,7 @@ export class ReviewRunExecutor {
     const runLog = parentLog.forRun(runId, { agent: agent.name });
 
     runLog.info(`Starting review with agent "${agent.name}" (${agent.provider}/${agent.model})`);
+    let usage: RunUsage | undefined;
 
     try {
       // Resolve the agent's LLM provider. (container.llm throws if the provider
@@ -210,7 +213,8 @@ export class ReviewRunExecutor {
           if (this.container.runBus.isCancelled(runId)) throw new RunCancelledError();
         },
       });
-      const { tokensIn, tokensOut, grounding } = outcome;
+      const { tokensIn, tokensOut, costUsd, costSource, grounding } = outcome;
+      usage = { tokensIn, tokensOut, costUsd, costSource };
 
       const keptFindings = outcome.review.findings;
 
@@ -243,8 +247,7 @@ export class ReviewRunExecutor {
       await this.repo.completeAgentRun(runId, {
         status: 'done',
         durationMs,
-        tokensIn,
-        tokensOut,
+        ...usage,
         findingsCount: findingRows.length,
         grounding,
         score: outcome.review.score,
@@ -298,15 +301,17 @@ export class ReviewRunExecutor {
         .completeAgentRun(runId, {
           status,
           durationMs: Date.now() - start,
-          tokensIn: 0,
-          tokensOut: 0,
+          tokensIn: usage?.tokensIn ?? 0,
+          tokensOut: usage?.tokensOut ?? 0,
+          costUsd: usage?.costUsd,
+          costSource: usage?.costSource,
           findingsCount: 0,
           grounding: '0/0 passed',
           error: msg,
         })
         .catch(() => undefined);
       await this.repo
-        .saveRunTrace(runId, this.traceFromBuffer(runId, pull, agent, '0/0 passed', Date.now() - start))
+        .saveRunTrace(runId, this.traceFromBuffer(runId, pull, agent, '0/0 passed', Date.now() - start, usage))
         .catch(() => undefined);
       this.container.runBus.complete(runId);
       throw err;
@@ -411,6 +416,7 @@ export class ReviewRunExecutor {
     agent: AgentRow,
     grounding: string,
     durationMs = 0,
+    usage?: RunUsage,
   ): RunTrace {
     return {
       config: {
@@ -421,7 +427,13 @@ export class ReviewRunExecutor {
         pr: pull.number,
         source: 'local',
       },
-      stats: { duration_ms: durationMs, tokens_in: 0, tokens_out: 0, findings: 0, grounding },
+      stats: {
+        duration_ms: durationMs,
+        tokens_in: usage?.tokensIn ?? 0,
+        tokens_out: usage?.tokensOut ?? 0,
+        findings: 0,
+        grounding,
+      },
       prompt_assembly: { system: agent.systemPrompt, skills: null, memory: null, specs: null, user: '' },
       tool_calls: [],
       raw_output: '',

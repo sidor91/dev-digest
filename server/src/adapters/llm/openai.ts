@@ -91,6 +91,7 @@ export class OpenAIProvider implements LLMProvider {
     const messages = [...req.messages];
     let tokensIn = 0;
     let tokensOut = 0;
+    let hasCompleteUsage = true;
     let lastRaw = '';
 
     for (let attempt = 1; attempt <= maxRetries + 1; attempt++) {
@@ -109,17 +110,22 @@ export class OpenAIProvider implements LLMProvider {
         ),
       );
       lastRaw = res.choices?.[0]?.message?.content ?? '';
-      tokensIn += res.usage?.prompt_tokens ?? 0;
-      tokensOut += res.usage?.completion_tokens ?? 0;
+      const promptTokens = res.usage?.prompt_tokens;
+      const completionTokens = res.usage?.completion_tokens;
+      hasCompleteUsage &&= promptTokens != null && completionTokens != null;
+      tokensIn += promptTokens ?? 0;
+      tokensOut += completionTokens ?? 0;
 
       const parsed = parseWithRepair(req.schema, lastRaw);
       if (parsed.ok) {
+        const costUsd = hasCompleteUsage ? estimateCost(req.model, tokensIn, tokensOut) : null;
         return {
           data: parsed.data,
           model: req.model,
           tokensIn,
           tokensOut,
-          costUsd: estimateCost(req.model, tokensIn, tokensOut),
+          costUsd,
+          ...(costUsd == null ? {} : { costSource: 'estimated' }),
           raw: lastRaw,
           attempts: attempt,
         };

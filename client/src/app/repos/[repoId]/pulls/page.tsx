@@ -96,21 +96,31 @@ export default function PullsPage() {
           onRefresh={() => refresh.mutate(repoId)}
           refreshing={refresh.isPending}
         />
-        <div style={s.headRow}>
-          {COLUMN_KEYS.map((key, i) => (
-            <div key={key} style={s.headCell(i === COLUMN_KEYS.length - 1)}>
-              {t(`list.columns.${key}`)}
+        <div role="region" aria-label={t("list.title")} tabIndex={0} style={s.tableScroll}>
+          <div style={s.tableContent}>
+            <div role="table" aria-label={t("list.title")} aria-busy={isLoading}>
+              <div role="row" style={s.headRow}>
+                {COLUMN_KEYS.map((key, i) => (
+                  <div role="columnheader" key={key} style={s.headCell(i === COLUMN_KEYS.length - 1)}>
+                    {t(`list.columns.${key}`)}
+                  </div>
+                ))}
+              </div>
+              {!isLoading && !isError && filtered.map((pr) => (
+                <PRRow key={pr.number} pr={pr} repoId={repoId} />
+              ))}
             </div>
-          ))}
+            {isLoading && (
+              <div style={s.loadingStack}>
+                {Array.from({ length: SKELETON_ROWS }).map((_, i) => (
+                  <Skeleton key={i} height={28} />
+                ))}
+              </div>
+            )}
+          </div>
         </div>
 
-        {isLoading ? (
-          <div style={s.loadingStack}>
-            {Array.from({ length: SKELETON_ROWS }).map((_, i) => (
-              <Skeleton key={i} height={28} />
-            ))}
-          </div>
-        ) : isError ? (
+        {!isLoading && (isError ? (
           <ErrorState
             title={t("list.errorTitle")}
             body={error instanceof ApiError ? error.message : t("list.errorBody")}
@@ -126,9 +136,7 @@ export default function PullsPage() {
                 : t("list.emptyStatusBody", { status })
             }
           />
-        ) : (
-          filtered.map((pr) => <PRRow key={pr.number} pr={pr} repoId={repoId} />)
-        )}
+        ) : null)}
       </div>
     </AppShell>
   );

@@ -8,6 +8,7 @@ import { getContext } from '../_shared/context.js';
 import { IdParams } from '../_shared/schemas.js';
 import { AppError, NotFoundError } from '../../platform/errors.js';
 import { deriveReviewStatus } from './status.js';
+import { reviewCostsForPulls } from './review-costs.js';
 
 /**
  * F1 — pulls module. PR import via Octokit (list + per-PR detail).
@@ -116,6 +117,8 @@ export default async function pullsRoutes(appBase: FastifyInstance) {
     // grouping is cheap. (The per-severity FINDINGS breakdown is intentionally
     // not surfaced on the list — findings live on the PR detail page.)
     const prIds = rows.map((r) => r.id);
+    const costsByPr = new Map((await reviewCostsForPulls(container.db, workspaceId, prIds))
+      .map((cost) => [cost.prId, cost]));
     const latestReviewByPr = new Map<string, { score: number | null }>();
     if (prIds.length > 0) {
       const reviewRows = await container.db
@@ -132,6 +135,7 @@ export default async function pullsRoutes(appBase: FastifyInstance) {
     const now = Date.now();
     return rows.map((r) => {
       const review = latestReviewByPr.get(r.id);
+      const cost = costsByPr.get(r.id);
       return {
         id: r.id,
         number: r.number,
@@ -153,6 +157,9 @@ export default async function pullsRoutes(appBase: FastifyInstance) {
         opened_at: r.openedAt?.toISOString() ?? null,
         updated_at: r.updatedAt?.toISOString() ?? null,
         score: review ? review.score : null,
+        cost_usd: cost?.cost_usd ?? null,
+        cost_is_partial: cost?.cost_is_partial ?? false,
+        cost_is_estimated: cost?.cost_is_estimated ?? false,
       };
     });
   });

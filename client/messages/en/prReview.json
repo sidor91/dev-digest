@@ -1,4 +1,11 @@
 {
+  "cost": {
+    "unavailable": "Cost unavailable",
+    "estimated": "Estimated cost: {amount}",
+    "below": "Less than {amount}",
+    "partial": "Partial",
+    "tokens": "{count, number} tok"
+  },
   "finding": {
     "accepted": "accepted",
     "dismissed": "dismissed",
@@ -92,6 +99,7 @@
       "size": "Size",
       "score": "Score",
       "status": "Status",
+      "cost": "Cost",
       "updated": "Updated"
     },
     "filesCount": "{count} files",

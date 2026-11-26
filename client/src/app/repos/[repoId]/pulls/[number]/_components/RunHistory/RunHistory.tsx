@@ -4,6 +4,8 @@ import React from "react";
 import { useTranslations } from "next-intl";
 import { Badge, Icon, CircularScore, type IconName } from "@devdigest/ui";
 import type { RunSummary, PrCommit } from "@devdigest/shared";
+import { CostValue } from "@/app/repos/[repoId]/pulls/_components/CostValue/CostValue";
+import styles from "./RunHistory.module.css";
 
 /**
  * PR timeline — every agent run interleaved with the PR's commits, newest-first
@@ -112,7 +114,7 @@ export function RunHistory({
   ].sort((a, b) => b.ts - a.ts);
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+    <div className={styles.timeline}>
       {items.map((item) => {
         if (item.kind === "commit") {
           const c = item.commit;
@@ -149,8 +151,10 @@ export function RunHistory({
         const r = item.run;
         const o = outcomeOf(r);
         const settled = r.status === "done";
+        const tokens = r.tokens_in == null || r.tokens_out == null ? null : r.tokens_in + r.tokens_out;
+        const showTokens = tokens != null && (settled || tokens > 0);
         return (
-          <div key={`run:${r.run_id}`} style={rowStyle}>
+          <div key={`run:${r.run_id}`} style={rowStyle} className={styles.run}>
             <Badge color={o.color} bg={o.bg} icon={o.icon}>
               {t(`runStatus.${o.key}`)}
             </Badge>
@@ -195,8 +199,14 @@ export function RunHistory({
                 </div>
               )}
             </div>
-            <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 2, fontSize: 11, color: "var(--text-muted)", flexShrink: 0 }}>
-              {r.ran_at && <span>{new Date(r.ran_at).toLocaleTimeString()}</span>}
+            <div className={styles.metadata}>
+              {r.ran_at && <time dateTime={r.ran_at}>{new Date(r.ran_at).toLocaleTimeString()}</time>}
+              <span className={`${styles.usage} mono`}>
+                {showTokens && (
+                  <><span>{t("cost.tokens", { count: tokens })}</span><span aria-hidden="true">{" · "}</span></>
+                )}
+                <CostValue usd={r.cost_usd} estimated={r.cost_source === "estimated"} />
+              </span>
             </div>
             <button
               type="button"

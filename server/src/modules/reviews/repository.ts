@@ -150,20 +150,7 @@ export class ReviewRepository {
 
   completeAgentRun(
     runId: string,
-    values: {
-      status: 'done' | 'failed' | 'cancelled';
-      durationMs: number;
-      tokensIn: number;
-      tokensOut: number;
-      findingsCount: number;
-      grounding: string;
-      /** Review score (0-100); null on failed/cancelled runs. */
-      score?: number | null;
-      /** Findings that tripped the agent's gate; 0 on failed/cancelled runs. */
-      blockers?: number | null;
-      /** Failure reason (status='failed') / cancellation note. Null clears it. */
-      error?: string | null;
-    },
+    values: Parameters<typeof runRepo.completeAgentRun>[2],
   ): Promise<void> {
     return runRepo.completeAgentRun(this.db, runId, values);
   }
@@ -178,7 +165,7 @@ export class ReviewRepository {
     return runRepo.saveRunTrace(this.db, runId, trace);
   }
 
-  getRunTrace(runId: string): Promise<RunTrace | undefined> {
-    return runRepo.getRunTrace(this.db, runId);
+  getRunTrace(workspaceId: string, runId: string): Promise<RunTrace | undefined> {
+    return runRepo.getRunTrace(this.db, workspaceId, runId);
   }
 }

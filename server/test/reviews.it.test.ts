@@ -7,7 +7,7 @@ import { seed } from '../src/db/seed.js';
 import { MockLLMProvider, MockEmbedder, MockGitClient } from '../src/adapters/mocks.js';
 import * as t from '../src/db/schema.js';
 import { eq } from 'drizzle-orm';
-import type { Review } from '@devdigest/shared';
+import type { Review, RunTrace } from '@devdigest/shared';
 
 const hasDocker = await dockerAvailable();
 const d = hasDocker ? describe : describe.skip;
@@ -229,6 +229,73 @@ d('A2 reviews + agents (Testcontainers pg)', () => {
     ).json();
     expect(reviews[0].findings).toHaveLength(1);
     expect(reviews[0].model).toBe('claude-x');
+    await app.close();
+  });
+
+  it('keeps tracked PR spend and its completeness when runs are removed from history', async () => {
+    const app = await appWith(REVIEW_FIXTURE);
+    const db = pg.handle.db;
+    const { repo, pr } = await setupRepoAndPr(db, workspaceId);
+    const other = await setupRepoAndPr(db, workspaceId);
+    const agentIds: string[] = [];
+    for (const name of ['Cost reviewer A', 'Cost reviewer B']) {
+      const agent = await app.inject({
+        method: 'POST', url: '/agents',
+        payload: { name, provider: 'openai', model: 'gpt-4.1', system_prompt: 'review' },
+      });
+      expect(agent.statusCode).toBe(201);
+      agentIds.push(agent.json().id);
+    }
+
+    const runIds: string[] = [];
+    for (const agentId of agentIds) {
+      const started = await app.inject({ method: 'POST', url: `/pulls/${pr.id}/review`, payload: { agentId } });
+      expect(started.statusCode).toBe(200);
+      const id = started.json().runs[0].run_id;
+      runIds.push(id);
+      await app.inject(`/runs/${id}/events`);
+      await db.update(t.pullRequests).set({ headSha: 'next-commit' }).where(eq(t.pullRequests.id, pr.id));
+    }
+
+    const runId = runIds[0]!;
+    const [active] = await db.insert(t.agentRuns)
+      .values({ workspaceId, prId: pr.id, status: 'running' }).returning();
+    const total = async () => (await app.inject(`/repos/${repo.id}/pulls`)).json()[0];
+    const trace = (await app.inject(`/runs/${runId}/trace`)).json<RunTrace>();
+    expect(trace.stats).toMatchObject({ cost_usd: 0.001, cost_source: 'estimated' });
+    expect((await app.inject(`/pulls/${pr.id}/runs`)).json()).toEqual(expect.arrayContaining([
+      expect.objectContaining({ run_id: runId, cost_usd: 0.001, cost_source: 'estimated' }),
+    ]));
+    expect(await total()).toMatchObject({ cost_usd: 0.002, cost_is_partial: false, cost_is_estimated: true });
+    expect((await app.inject(`/repos/${other.repo.id}/pulls`)).json()[0]).toMatchObject({ cost_usd: null });
+
+    const [unknown] = await db.insert(t.agentRuns)
+      .values({ workspaceId, prId: pr.id, status: 'failed' }).returning();
+    delete trace.stats.cost_usd;
+    delete trace.stats.cost_source;
+    await db.insert(t.runTraces).values({ runId: unknown!.id, trace });
+    expect((await app.inject(`/runs/${unknown!.id}/trace`)).json().stats)
+      .toMatchObject({ cost_usd: null, cost_source: null });
+    expect(await total()).toMatchObject({ cost_usd: 0.002, cost_is_partial: true, cost_is_estimated: true });
+
+    await db.insert(t.agentRuns).values({
+      workspaceId, prId: other.pr.id, status: 'done', costUsd: 0, costSource: 'reported',
+    });
+    expect((await app.inject(`/repos/${other.repo.id}/pulls`)).json()[0])
+      .toMatchObject({ cost_usd: 0, cost_is_partial: false, cost_is_estimated: false });
+
+    const remove = (id: string) => app.inject({ method: 'DELETE', url: `/runs/${id}` });
+    const concurrentDeletes = await Promise.all([remove(runId), remove(runId)]);
+    expect(concurrentDeletes.map((res) => res.json().ok).sort()).toEqual([false, true]);
+    for (const id of [...runIds.slice(1), unknown!.id]) {
+      expect((await remove(id)).json()).toEqual({ ok: true });
+    }
+    expect((await remove(runId)).json()).toEqual({ ok: false });
+    expect((await remove(active!.id)).json()).toEqual({ ok: false });
+    expect((await app.inject(`/runs/${runId}/trace`)).statusCode).toBe(404);
+    expect((await app.inject(`/pulls/${pr.id}/reviews`)).json()).toEqual([]);
+    expect((await app.inject(`/pulls/${pr.id}/runs`)).json()).toMatchObject([{ run_id: active!.id }]);
+    expect(await total()).toMatchObject({ cost_usd: 0.002, cost_is_partial: true, cost_is_estimated: true });
     await app.close();
   });
 

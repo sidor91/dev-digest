@@ -172,6 +172,10 @@ export const PrMeta = z.object({
   updated_at: z.string().nullish(),
   // Latest-review score (list endpoint only; null/absent until reviewed).
   score: z.number().int().nullish(),
+  // Review spend appears on the repository PR list.
+  cost_usd: z.number().nonnegative().nullish(),
+  cost_is_partial: z.boolean().optional(),
+  cost_is_estimated: z.boolean().optional(),
 });
 export type PrMeta = z.infer<typeof PrMeta>;
 

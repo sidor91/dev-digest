@@ -4,6 +4,7 @@ import type {
   ModelInfo,
   CompletionRequest,
   CompletionResult,
+  RunCostSource,
   StructuredRequest,
   StructuredResult,
 } from '@devdigest/shared';
@@ -62,7 +63,8 @@ export class OpenRouterProvider implements LLMProvider {
     const messages = [...req.messages];
     let tokensIn = 0;
     let tokensOut = 0;
-    let costFromApi: number | null = null;
+    let costUsd: number | null = 0;
+    let costSource: RunCostSource = 'reported';
     let lastRaw = '';
 
     for (let attempt = 1; attempt <= maxRetries + 1; attempt++) {
@@ -91,11 +93,23 @@ export class OpenRouterProvider implements LLMProvider {
         throw new Error(`OpenRouter returned no choices for ${req.schemaName}${errMsg ? `: ${errMsg}` : ''}`);
       }
       lastRaw = choice.message?.content ?? '';
-      tokensIn += res.usage?.prompt_tokens ?? 0;
-      tokensOut += res.usage?.completion_tokens ?? 0;
+      const promptTokens = res.usage?.prompt_tokens;
+      const completionTokens = res.usage?.completion_tokens;
+      tokensIn += promptTokens ?? 0;
+      tokensOut += completionTokens ?? 0;
       // `usage.cost` is an OpenRouter extension (USD), absent from the OpenAI SDK type.
       const apiCost = (res.usage as { cost?: number } | null | undefined)?.cost;
-      if (typeof apiCost === 'number') costFromApi = (costFromApi ?? 0) + apiCost;
+      const reported = typeof apiCost === 'number' && Number.isFinite(apiCost) && apiCost >= 0;
+      const estimate = !reported && promptTokens != null && completionTokens != null
+        ? this.estimateCost?.(req.model, promptTokens, completionTokens)
+        : null;
+      const attemptCost = reported ? apiCost : estimate;
+      if (attemptCost == null || !Number.isFinite(attemptCost) || attemptCost < 0) {
+        costUsd = null;
+      } else if (costUsd != null) {
+        costUsd += attemptCost;
+        if (!reported) costSource = 'estimated';
+      }
 
       const parsed = parseWithRepair(req.schema, lastRaw);
       if (parsed.ok) {
@@ -104,7 +118,8 @@ export class OpenRouterProvider implements LLMProvider {
           model: req.model,
           tokensIn,
           tokensOut,
-          costUsd: costFromApi ?? this.estimateCost?.(req.model, tokensIn, tokensOut) ?? null,
+          costUsd,
+          ...(costUsd == null ? {} : { costSource }),
           raw: lastRaw,
           attempts: attempt,
         };

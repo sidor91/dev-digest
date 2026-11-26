@@ -63,12 +63,15 @@ export interface StructuredRequest<T> {
   maxRetries?: number;
 }
 
+export type RunCostSource = 'reported' | 'estimated';
+
 export interface StructuredResult<T> {
   data: T;
   model: string;
   tokensIn: number;
   tokensOut: number;
   costUsd: number | null;
+  costSource?: RunCostSource;
   raw: string;
   attempts: number;
 }

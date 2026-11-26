@@ -94,6 +94,7 @@ export class AnthropicProvider implements LLMProvider {
     const messages: Anthropic.MessageParam[] = [...rest];
     let tokensIn = 0;
     let tokensOut = 0;
+    let hasCompleteUsage = true;
     let lastRaw = '';
 
     for (let attempt = 1; attempt <= maxRetries + 1; attempt++) {
@@ -117,8 +118,11 @@ export class AnthropicProvider implements LLMProvider {
           req.timeoutMs ?? DEFAULT_TIMEOUT,
         ),
       );
-      tokensIn += res.usage.input_tokens;
-      tokensOut += res.usage.output_tokens;
+      const promptTokens = res.usage?.input_tokens;
+      const completionTokens = res.usage?.output_tokens;
+      hasCompleteUsage &&= promptTokens != null && completionTokens != null;
+      tokensIn += promptTokens ?? 0;
+      tokensOut += completionTokens ?? 0;
 
       const toolUse = res.content.find(
         (b): b is Anthropic.ToolUseBlock => b.type === 'tool_use',
@@ -127,12 +131,14 @@ export class AnthropicProvider implements LLMProvider {
 
       const parsed = parseWithRepair(req.schema, lastRaw);
       if (parsed.ok) {
+        const costUsd = hasCompleteUsage ? estimateCost(req.model, tokensIn, tokensOut) : null;
         return {
           data: parsed.data,
           model: req.model,
           tokensIn,
           tokensOut,
-          costUsd: estimateCost(req.model, tokensIn, tokensOut),
+          costUsd,
+          ...(costUsd == null ? {} : { costSource: 'estimated' }),
           raw: lastRaw,
           attempts: attempt,
         };
