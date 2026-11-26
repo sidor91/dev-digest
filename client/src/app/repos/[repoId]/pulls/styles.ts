@@ -1,6 +1,8 @@
 import type { CSSProperties } from "react";
 import { GRID } from "./constants";
 
+const pageGutter = "clamp(0px, calc(25vw - 100px), 32px)";
+
 /** Co-located styles for the PR list page (extracted from inline styles). */
 export const s = {
   row: (hover: boolean): CSSProperties => ({
@@ -62,7 +64,7 @@ export const s = {
     gap: 12,
   } satisfies CSSProperties,
   pageHeader: {
-    padding: "24px 32px 10px",
+    padding: `24px ${pageGutter} 10px`,
     display: "flex",
     alignItems: "flex-end",
     gap: 16,
@@ -84,12 +86,15 @@ export const s = {
     alignItems: "center",
   } satisfies CSSProperties,
   tableCard: {
-    margin: "14px 32px 44px",
+    margin: `14px ${pageGutter} 44px`,
     border: "1px solid var(--border)",
     borderRadius: 10,
     overflow: "hidden",
     background: "var(--bg-elevated)",
   } satisfies CSSProperties,
+  tableScroll: { overflowX: "auto" } satisfies CSSProperties,
+  tableContent: { minWidth: 900 } satisfies CSSProperties,
+  costCell: { fontSize: 13, color: "var(--text-secondary)" } satisfies CSSProperties,
   headRow: {
     display: "grid",
     gridTemplateColumns: GRID,

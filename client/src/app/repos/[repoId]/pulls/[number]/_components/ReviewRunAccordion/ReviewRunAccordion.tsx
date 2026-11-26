@@ -1,5 +1,5 @@
 /* ReviewRunAccordion — one collapsible review RUN (a single agent's pass over
-   the PR). Header shows agent + verdict + counts + score + when it ran; the
+   the PR). Header shows agent + verdict + counts + score + cost + time; the
    body holds that run's VerdictBanner summary and its own FindingsPanel. A PR
    can have many runs (different agents / re-runs over time) — each is separate
    and collapsible so older runs don't bury the latest. */
@@ -7,7 +7,8 @@
 
 import React from "react";
 import { Icon, Badge } from "@devdigest/ui";
-import type { ReviewRecord, Verdict } from "@devdigest/shared";
+import type { ReviewRecord, RunSummary, Verdict } from "@devdigest/shared";
+import { CostValue } from "@/app/repos/[repoId]/pulls/_components/CostValue/CostValue";
 import { FindingsPanel } from "../FindingsPanel";
 import { VerdictBanner } from "../VerdictBanner";
 import { useDeleteReview } from "../../../../../../../lib/hooks/reviews";
@@ -25,6 +26,7 @@ function formatWhen(iso: string): string {
 
 export function ReviewRunAccordion({
   review,
+  run,
   prId,
   defaultOpen = false,
   repoFullName,
@@ -33,6 +35,7 @@ export function ReviewRunAccordion({
   targetNonce = 0,
 }: {
   review: ReviewRecord;
+  run?: Pick<RunSummary, "cost_usd" | "cost_source">;
   prId: string;
   defaultOpen?: boolean;
   repoFullName?: string | null;
@@ -79,6 +82,7 @@ export function ReviewRunAccordion({
         style={{
           width: "100%",
           display: "flex",
+          flexWrap: "wrap",
           alignItems: "center",
           gap: 12,
           padding: "13px 16px",
@@ -103,8 +107,9 @@ export function ReviewRunAccordion({
             {review.score}
           </Badge>
         )}
-        <span className="mono" style={{ fontSize: 12, color: "var(--text-muted)" }}>
-          {formatWhen(review.created_at)}
+        <span className="mono" style={{ display: "inline-flex", alignItems: "baseline", gap: 8, fontSize: 12, color: "var(--text-muted)" }}>
+          <CostValue usd={run?.cost_usd} estimated={run?.cost_source === "estimated"} />
+          <time dateTime={review.created_at}>{formatWhen(review.created_at)}</time>
         </span>
         <button
           onClick={(e) => {

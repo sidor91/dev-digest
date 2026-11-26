@@ -1,0 +1,2 @@
+ALTER TABLE "agent_runs" ADD CONSTRAINT "agent_runs_cost_source_check" CHECK ("agent_runs"."cost_source" in ('reported', 'estimated'));--> statement-breakpoint
+ALTER TABLE "deleted_run_costs" ADD CONSTRAINT "deleted_run_costs_cost_source_check" CHECK ("deleted_run_costs"."cost_source" in ('reported', 'estimated'));

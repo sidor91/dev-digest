@@ -9,6 +9,7 @@ import type { PrMeta } from "@/lib/types";
 import { SIZE_COLOR, STATUS_META } from "../../constants";
 import { relativeTime, sizeOf } from "../../helpers";
 import { s } from "../../styles";
+import { CostValue } from "../CostValue/CostValue";
 
 export function PRRow({ pr, repoId }: { pr: PrMeta; repoId: string }) {
   const t = useTranslations("prReview");
@@ -19,12 +20,13 @@ export function PRRow({ pr, repoId }: { pr: PrMeta; repoId: string }) {
   const reviewed = pr.score != null; // null score ⇒ PR has never been reviewed
   return (
     <div
+      role="row"
       onMouseEnter={() => setH(true)}
       onMouseLeave={() => setH(false)}
       onClick={() => router.push(`/repos/${repoId}/pulls/${pr.number}`)}
       style={s.row(h)}
     >
-      <div style={s.rowTitleCell}>
+      <div role="cell" style={s.rowTitleCell}>
         <Icon.GitPullRequest size={15} style={s.rowIcon(st.c)} />
         <div style={s.rowTitleWrap}>
           <div style={s.rowTitle(h)}>{pr.title}</div>
@@ -33,11 +35,11 @@ export function PRRow({ pr, repoId }: { pr: PrMeta; repoId: string }) {
           </span>
         </div>
       </div>
-      <div style={s.authorCell}>
+      <div role="cell" style={s.authorCell}>
         <Avatar name={pr.author} size={18} />
         {pr.author}
       </div>
-      <div>
+      <div role="cell">
         <Badge
           color={SIZE_COLOR[size]}
           bg="transparent"
@@ -46,19 +48,22 @@ export function PRRow({ pr, repoId }: { pr: PrMeta; repoId: string }) {
           {size} · {lines}
         </Badge>
       </div>
-      <div style={s.scoreCell}>
+      <div role="cell" style={s.scoreCell}>
         {reviewed ? (
           <CircularScore score={pr.score!} size={34} stroke={3} />
         ) : (
           <span style={s.muted}>—</span>
         )}
       </div>
-      <div>
+      <div role="cell">
         <Badge dot color={st.c} bg="transparent">
           {t(`list.status.${st.labelKey}`)}
         </Badge>
       </div>
-      <div style={s.updatedCell}>{relativeTime(pr.updated_at)}</div>
+      <div role="cell" style={s.costCell}>
+        <CostValue usd={pr.cost_usd} estimated={pr.cost_is_estimated} partial={pr.cost_is_partial} />
+      </div>
+      <div role="cell" style={s.updatedCell}>{relativeTime(pr.updated_at)}</div>
     </div>
   );
 }

@@ -135,4 +135,29 @@ describe('reviewPullRequest (engine)', () => {
     expect(seen.length).toBeGreaterThan(0);
     expect(seen.every((s) => s === 'sess-abc')).toBe(true);
   });
+
+  it.each([
+    { chunkCost: 0.004, runCost: 0.004, runSource: 'estimated' },
+    { chunkCost: null, runCost: null, runSource: null },
+  ])('aggregates cost and its source over map-reduce chunks ($runSource)', async ({ chunkCost, runCost, runSource }) => {
+    const llm = new MockLLMProvider('openai', { structured: fixture });
+    const complete = llm.completeStructured.bind(llm);
+    let call = 0;
+    llm.completeStructured = async (req) => {
+      const result = await complete(req);
+      if (call++ === 0) return { ...result, costUsd: 0, costSource: 'reported' };
+      return { ...result, costUsd: chunkCost, costSource: 'estimated' };
+    };
+    const diff = await new MockGitClient().diff();
+    const otherFile = { ...diff.files[0]!, path: 'src/server.ts' };
+
+    const result = await reviewPullRequest({
+      systemPrompt: 'reviewer', model: 'test-model', llm, strategy: 'map-reduce',
+      diff: { ...diff, files: [...diff.files, otherFile] },
+    });
+
+    expect(result.mode).toBe('map-reduce');
+    expect(result.costUsd).toBe(runCost);
+    expect(result.costSource).toBe(runSource);
+  });
 });

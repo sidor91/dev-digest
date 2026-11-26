@@ -6,6 +6,7 @@ import React from "react";
 import { useTranslations } from "next-intl";
 import { Badge } from "@devdigest/ui";
 import type { RunTrace, FindingRecord } from "@devdigest/shared";
+import { CostValue } from "@/app/repos/[repoId]/pulls/_components/CostValue/CostValue";
 import { PROMPT_COLORS } from "../../constants";
 import { formatSeconds, formatTokens } from "../../helpers";
 import { s } from "../../styles";
@@ -14,6 +15,7 @@ import { ToolCallRow } from "../ToolCallRow";
 import { PromptBlock } from "../PromptBlock";
 import { FindingsSection } from "../FindingsSection";
 import { Row, Stat } from "../atoms";
+import styles from "./TraceBody.module.css";
 
 export function TraceBody({ trace, findings }: { trace: RunTrace; findings: FindingRecord[] }) {
   const t = useTranslations("runs");
@@ -60,10 +62,16 @@ export function TraceBody({ trace, findings }: { trace: RunTrace; findings: Find
           </Badge>
         }
       >
-        <div style={s.statsRow}>
-          <Stat label={t("trace.stat.duration")} val={formatSeconds(stats.duration_ms)} />
-          <Stat label={t("trace.stat.tokens")} val={formatTokens(stats.tokens_in, stats.tokens_out)} />
-          <Stat label={t("trace.stat.findings")} val={stats.findings} />
+        <div className={styles.statsContainer}>
+          <div className={styles.stats}>
+            <Stat label={t("trace.stat.duration")} val={formatSeconds(stats.duration_ms)} />
+            <Stat label={t("trace.stat.tokens")} val={formatTokens(stats.tokens_in, stats.tokens_out)} />
+            <Stat
+              label={t("trace.stat.cost")}
+              val={<CostValue usd={stats.cost_usd} estimated={stats.cost_source === "estimated"} />}
+            />
+            <Stat label={t("trace.stat.findings")} val={stats.findings} />
+          </div>
         </div>
       </TraceSection>
 

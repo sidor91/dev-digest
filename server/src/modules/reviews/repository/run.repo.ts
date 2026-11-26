@@ -1,7 +1,7 @@
 import { and, desc, eq } from 'drizzle-orm';
 import type { Db } from '../../../db/client.js';
 import * as t from '../../../db/schema.js';
-import type { RunSummary, RunTrace } from '@devdigest/shared';
+import type { RunCostSource, RunSummary, RunTrace } from '@devdigest/shared';
 
 // ---- in-flight / history --------------------------------------------------
 
@@ -59,6 +59,8 @@ export async function listRunsForPull(
     duration_ms: run.durationMs,
     tokens_in: run.tokensIn,
     tokens_out: run.tokensOut,
+    cost_usd: run.costUsd,
+    cost_source: run.costSource,
     findings_count: run.findingsCount,
     grounding: run.grounding,
     ran_at: run.ranAt ? run.ranAt.toISOString() : null,
@@ -68,25 +70,44 @@ export async function listRunsForPull(
 }
 
 /**
- * Delete one agent run (+ its trace via FK cascade) AND the review it produced.
- * Workspace-scoped. `reviews.run_id` has no FK to `agent_runs`, so the review
- * (and its findings, which DO cascade from `reviews`) must be removed explicitly
- * here — otherwise deleting a run from the timeline leaves its findings orphaned
- * in the Review Runs list below.
+ * Retain the run's contribution to PR spend while removing its record, trace,
+ * review and findings. The locked row serializes the snapshot with completion
+ * and with concurrent deletes.
  */
 export async function deleteAgentRun(
   db: Db,
   workspaceId: string,
   runId: string,
 ): Promise<boolean> {
-  await db
-    .delete(t.reviews)
-    .where(and(eq(t.reviews.runId, runId), eq(t.reviews.workspaceId, workspaceId)));
-  const rows = await db
-    .delete(t.agentRuns)
-    .where(and(eq(t.agentRuns.id, runId), eq(t.agentRuns.workspaceId, workspaceId)))
-    .returning({ id: t.agentRuns.id });
-  return rows.length > 0;
+  return db.transaction(async (tx) => {
+    const scope = and(eq(t.agentRuns.id, runId), eq(t.agentRuns.workspaceId, workspaceId));
+    const [run] = await tx
+      .select({
+        prId: t.agentRuns.prId,
+        status: t.agentRuns.status,
+        costUsd: t.agentRuns.costUsd,
+        costSource: t.agentRuns.costSource,
+      })
+      .from(t.agentRuns)
+      .where(scope)
+      .for('update');
+    if (!run || run.status === 'running') return false;
+
+    if (run.prId) {
+      await tx.insert(t.deletedRunCosts).values({
+        runId,
+        workspaceId,
+        prId: run.prId,
+        costUsd: run.costUsd,
+        costSource: run.costSource,
+      });
+    }
+    // Reviews lack a run FK. Deleting the review cascades to its findings.
+    await tx.delete(t.reviews)
+      .where(and(eq(t.reviews.runId, runId), eq(t.reviews.workspaceId, workspaceId)));
+    await tx.delete(t.agentRuns).where(scope);
+    return true;
+  });
 }
 
 /** Mark a still-running run as cancelled (no-op if it already finished). */
@@ -146,6 +167,8 @@ export async function completeAgentRun(
     durationMs: number;
     tokensIn: number;
     tokensOut: number;
+    costUsd?: number | null;
+    costSource?: RunCostSource | null;
     findingsCount: number;
     grounding: string;
     /** Review score (0-100); null on failed/cancelled runs. */
@@ -163,6 +186,8 @@ export async function completeAgentRun(
       durationMs: values.durationMs,
       tokensIn: values.tokensIn,
       tokensOut: values.tokensOut,
+      costUsd: values.costUsd ?? null,
+      costSource: values.costSource ?? null,
       findingsCount: values.findingsCount,
       grounding: values.grounding,
       score: values.score ?? null,
@@ -180,7 +205,13 @@ export async function saveRunTrace(db: Db, runId: string, trace: RunTrace): Prom
     .onConflictDoUpdate({ target: t.runTraces.runId, set: { trace } });
 }
 
-export async function getRunTrace(db: Db, runId: string): Promise<RunTrace | undefined> {
-  const [row] = await db.select().from(t.runTraces).where(eq(t.runTraces.runId, runId));
-  return row ? (row.trace as RunTrace) : undefined;
+export async function getRunTrace(db: Db, workspaceId: string, runId: string): Promise<RunTrace | undefined> {
+  const [row] = await db
+    .select({ trace: t.runTraces.trace, costUsd: t.agentRuns.costUsd, costSource: t.agentRuns.costSource })
+    .from(t.runTraces)
+    .innerJoin(t.agentRuns, eq(t.runTraces.runId, t.agentRuns.id))
+    .where(and(eq(t.runTraces.runId, runId), eq(t.agentRuns.workspaceId, workspaceId)));
+  if (!row) return undefined;
+  const trace = row.trace as RunTrace;
+  return { ...trace, stats: { ...trace.stats, cost_usd: row.costUsd, cost_source: row.costSource } };
 }

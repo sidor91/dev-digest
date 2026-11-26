@@ -156,6 +156,7 @@ export default function PRDetailPage() {
             onRunDone={() => {
               invalidateActiveRuns();
               invalidateRunHistory();
+              qc.invalidateQueries({ queryKey: ["pulls", repoId] });
               refetchReviews();
             }}
           />

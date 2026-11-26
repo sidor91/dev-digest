@@ -1,4 +1,5 @@
-import { pgTable, uuid, text, integer, jsonb, timestamp } from 'drizzle-orm/pg-core';
+import { sql } from 'drizzle-orm';
+import { check, doublePrecision, index, pgTable, uuid, text, integer, jsonb, timestamp } from 'drizzle-orm/pg-core';
 import { workspaces } from './core';
 import { agents } from './agents';
 import { pullRequests } from './pulls';
@@ -18,6 +19,8 @@ export const agentRuns = pgTable('agent_runs', {
   durationMs: integer('duration_ms'),
   tokensIn: integer('tokens_in'),
   tokensOut: integer('tokens_out'),
+  costUsd: doublePrecision('cost_usd'),
+  costSource: text('cost_source', { enum: ['reported', 'estimated'] }),
   status: text('status'),
   /** Failure reason when status='failed' (LLM/API error, timeout, quota, …). */
   error: text('error'),
@@ -28,7 +31,26 @@ export const agentRuns = pgTable('agent_runs', {
   score: integer('score'),
   /** Findings that tripped the agent's gate (severity ≥ ciFailOn). */
   blockers: integer('blockers'),
-});
+}, (t) => [
+  index('agent_runs_ws_pr_idx').on(t.workspaceId, t.prId),
+  check('agent_runs_cost_source_check', sql`${t.costSource} in ('reported', 'estimated')`),
+]);
+
+/** Cost contribution retained after the corresponding run and trace are deleted. */
+export const deletedRunCosts = pgTable('deleted_run_costs', {
+  runId: uuid('run_id').primaryKey(),
+  workspaceId: uuid('workspace_id')
+    .notNull()
+    .references(() => workspaces.id, { onDelete: 'cascade' }),
+  prId: uuid('pr_id')
+    .notNull()
+    .references(() => pullRequests.id, { onDelete: 'cascade' }),
+  costUsd: doublePrecision('cost_usd'),
+  costSource: text('cost_source', { enum: ['reported', 'estimated'] }),
+}, (t) => [
+  index('deleted_run_costs_ws_pr_idx').on(t.workspaceId, t.prId),
+  check('deleted_run_costs_cost_source_check', sql`${t.costSource} in ('reported', 'estimated')`),
+]);
 
 /** Whole trace of one run as a SINGLE jsonb document. */
 export const runTraces = pgTable('run_traces', {

@@ -72,4 +72,16 @@ describe("RunHistory — outcome badge", () => {
     renderRuns([run({ status: "running", score: null, blockers: null })]);
     expect(screen.getByText("running")).toBeInTheDocument();
   });
+
+  it("shows a cost estimate beside the token count and keeps unavailable costs distinct", () => {
+    renderRuns([
+      run({ tokens_in: 8_000, tokens_out: 1_119, cost_usd: 0.004, cost_source: "estimated" }),
+      run({ run_id: "run-2", status: "failed", tokens_in: 0, tokens_out: 0 }),
+    ]);
+
+    const cost = screen.getByText("~$0.004");
+    expect(cost.closest(".mono")).toHaveTextContent("9,119 tok · ~$0.004");
+    expect(screen.getByText("Cost unavailable")).toBeInTheDocument();
+    expect(screen.queryByText("0 tok")).not.toBeInTheDocument();
+  });
 });

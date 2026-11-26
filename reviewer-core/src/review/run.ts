@@ -3,6 +3,7 @@ import type {
   LLMProvider,
   PromptAssembly,
   Review,
+  RunCostSource,
   RunEventKind,
   UnifiedDiff,
 } from '@devdigest/shared';
@@ -108,6 +109,7 @@ export interface ReviewOutcome {
   tokensIn: number;
   tokensOut: number;
   costUsd: number | null;
+  costSource: RunCostSource | null;
   /** Joined raw model outputs (for the run trace). */
   raw: string;
 }
@@ -157,6 +159,7 @@ export async function reviewPullRequest(input: ReviewInput): Promise<ReviewOutco
   let tokensIn = 0;
   let tokensOut = 0;
   let costUsd: number | null = 0;
+  let costSource: RunCostSource = 'reported';
   const raws: string[] = [];
 
   for (const chunk of chunks) {
@@ -181,7 +184,11 @@ export async function reviewPullRequest(input: ReviewInput): Promise<ReviewOutco
     });
     tokensIn += res.tokensIn;
     tokensOut += res.tokensOut;
-    costUsd = costUsd == null || res.costUsd == null ? null : costUsd + res.costUsd;
+    costUsd = costUsd == null || res.costUsd == null || !Number.isFinite(res.costUsd) || res.costUsd < 0
+      ? null
+      : costUsd + res.costUsd;
+    // Older injected providers may return a price without a source.
+    if (res.costSource !== 'reported') costSource = 'estimated';
     raws.push(res.raw);
     partials.push(res.data);
     emit('result', `${chunk.label}: ${res.data.findings.length} candidate finding(s)`);
@@ -214,6 +221,7 @@ export async function reviewPullRequest(input: ReviewInput): Promise<ReviewOutco
     tokensIn,
     tokensOut,
     costUsd,
+    costSource: costUsd == null ? null : costSource,
     raw: raws.join('\n---\n'),
   };
 }
