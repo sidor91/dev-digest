@@ -14,6 +14,7 @@ Record verified lessons from server work. Describe the symptom, cause, and reusa
 ## Tool & Library Notes
 
 - 2026-11-26 — The Codex local test environment can supply multiple `GIT_CONFIG_KEY_n` and `GIT_CONFIG_VALUE_n` pairs. `gitAt` allows the count and slot 0 through simple-git, so a subprocess with a larger inherited count fails before reading `origin` with `missing config key GIT_CONFIG_KEY_1`. `scrubRemote` catches the read error and leaves the fixture URL in place. A temporary Git repo confirmed that the same local read and rewrite work with an explicit subprocess environment. Evidence: `server/src/adapters/git/simple-git.ts` (`gitAt`, `scrubRemote`) and `npm test -- test/git-adapter-safety.test.ts -t 'scrubs a PAT'` from `server/`.
+- 2026-11-26 — Follow-up to the Codex environment finding above. Apply the explicit environment in `gitAt` so local commands and tokenless fetches share it. The regression test supplies two benign Git config entries and fetches from a local fixture after rewriting `origin`. The test failed with `missing config key GIT_CONFIG_KEY_1` before the fix and passed afterward. Evidence: `server/src/adapters/git/simple-git.ts` (`gitAt`) and `server/test/git-adapter-safety.test.ts` (`scrubs a PAT`).
 
 ## Recurring Errors & Fixes
 

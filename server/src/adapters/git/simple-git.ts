@@ -23,11 +23,8 @@ const RESYNC_FETCH_DEPTH = 50;
 const GITHUB_ORIGIN = 'https://github.com/';
 
 /**
- * Environment passed to authenticated git subprocesses. An explicit
- * allow-list rather than `...process.env`: simple-git's unsafe-operations
- * guard rejects the whole call when vars such as `EDITOR`/`PAGER`/
- * `GIT_SSH_COMMAND` are present, and nothing else from the server's
- * environment needs to reach git.
+ * Host variables needed by git subprocesses. Build the environment explicitly
+ * so inherited Git config cannot interfere with local commands or fetches.
  */
 const PASSTHROUGH_ENV = [
   'PATH',
@@ -64,11 +61,8 @@ export class UnsafeClonePathError extends Error {
 }
 
 /**
- * Git environment variables this adapter sets on purpose. simple-git 4's
- * environment guard both REJECTS such vars when passed via `.env()` and
- * silently STRIPS them from the inherited `process.env` unless allowed — the
- * latter would quietly drop `GIT_TERMINAL_PROMPT=0` and let a private clone
- * hang on a credential prompt. Everything else stays guarded.
+ * Git environment variables the adapter sets explicitly. simple-git 4's
+ * environment guard requires them on its allow-list.
  */
 const ALLOWED_GIT_ENV = [
   'GIT_TERMINAL_PROMPT',
@@ -82,9 +76,27 @@ const ALLOWED_GIT_ENV = [
  *  major blocks, config keys outside its known-safe list). */
 const ALLOWED_GIT_CONFIG = ['core.symlinks'];
 
-/** The only way this adapter builds a simple-git instance. */
-function gitAt(baseDir: string): SimpleGit {
-  return simpleGit({ baseDir, allowEnvironment: ALLOWED_GIT_ENV, allowConfig: ALLOWED_GIT_CONFIG });
+/** Build an isolated, non-interactive Git instance with optional GitHub auth. */
+function gitAt(baseDir: string, token?: string): SimpleGit {
+  const env: Record<string, string> = {
+    GIT_TERMINAL_PROMPT: '0',
+    GCM_INTERACTIVE: 'never',
+  };
+  for (const key of PASSTHROUGH_ENV) {
+    const value = process.env[key];
+    if (value !== undefined) env[key] = value;
+  }
+  if (token) {
+    const basic = Buffer.from(`x-access-token:${token}`).toString('base64');
+    env.GIT_CONFIG_COUNT = '1';
+    env.GIT_CONFIG_KEY_0 = `http.${GITHUB_ORIGIN}.extraHeader`;
+    env.GIT_CONFIG_VALUE_0 = `Authorization: Basic ${basic}`;
+  }
+  return simpleGit({
+    baseDir,
+    allowEnvironment: ALLOWED_GIT_ENV,
+    allowConfig: ALLOWED_GIT_CONFIG,
+  }).env(env);
 }
 
 function isPlainSegment(s: string): boolean {
@@ -113,12 +125,6 @@ export class SimpleGitClient implements GitClient {
     private opts: SimpleGitClientOptions = {},
   ) {
     this.root = resolve(cloneDir);
-    // Force non-interactive auth so an unauthenticated/private clone fails in
-    // ~1s with a clear error instead of hanging on a credential prompt until the
-    // job timeout. Set on process.env (inherited by git subprocesses); kept
-    // there by ALLOWED_GIT_ENV, which simple-git 4 would otherwise strip.
-    process.env.GIT_TERMINAL_PROMPT ??= '0';
-    process.env.GCM_INTERACTIVE ??= 'never';
   }
 
   clonePathFor(repo: RepoRef): string {
@@ -134,26 +140,8 @@ export class SimpleGitClient implements GitClient {
     return gitAt(this.clonePathFor(repo));
   }
 
-  /**
-   * A simple-git instance for commands that talk to the network. With a token,
-   * auth goes in through `GIT_CONFIG_COUNT/KEY/VALUE` — guarded by simple-git
-   * and allowed only via ALLOWED_GIT_ENV, for config this class builds itself.
-   */
   private async netGit(baseDir: string): Promise<SimpleGit> {
-    const token = await this.opts.getToken?.();
-    if (!token) return gitAt(baseDir);
-    const env: Record<string, string> = {};
-    for (const key of PASSTHROUGH_ENV) {
-      const v = process.env[key];
-      if (v !== undefined) env[key] = v;
-    }
-    const basic = Buffer.from(`x-access-token:${token}`).toString('base64');
-    env.GIT_TERMINAL_PROMPT = '0';
-    env.GCM_INTERACTIVE = 'never';
-    env.GIT_CONFIG_COUNT = '1';
-    env.GIT_CONFIG_KEY_0 = `http.${GITHUB_ORIGIN}.extraHeader`;
-    env.GIT_CONFIG_VALUE_0 = `Authorization: Basic ${basic}`;
-    return gitAt(baseDir).env(env);
+    return gitAt(baseDir, await this.opts.getToken?.());
   }
 
   /**

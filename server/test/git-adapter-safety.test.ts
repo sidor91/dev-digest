@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeAll, afterAll } from 'vitest';
+import { describe, it, expect, beforeAll, afterAll, vi } from 'vitest';
 import { execFileSync } from 'node:child_process';
 import { mkdtemp, rm, mkdir, writeFile, readFile, access } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
@@ -72,18 +72,29 @@ describe('SimpleGitClient.clone', () => {
     expect(config).not.toContain('Authorization');
   });
 
-  it('scrubs a PAT left in origin by a pre-S1 clone on the next fetch', async () => {
+  it('scrubs a PAT from a legacy origin before fetching with Git config in the parent environment', async () => {
     const dest = join(cloneDir, 'legacy', 'repo');
+    const cleanUrl = 'https://github.com/legacy/repo.git';
     await mkdir(join(cloneDir, 'legacy'), { recursive: true });
     run(work, 'clone', '-q', upstream, dest);
     run(dest, 'remote', 'set-url', 'origin', 'https://x-access-token:ghp_OLD@github.com/legacy/repo.git');
+    // Fetch from the local fixture only after origin has been scrubbed.
+    run(dest, 'config', `url.${upstream}.insteadOf`, cleanUrl);
+    run(dest, 'config', 'protocol.https.allow', 'never');
 
     const client = new SimpleGitClient(cloneDir);
-    // The fetch itself targets github.com and fails offline / without the
-    // repo — the scrub must already have happened before that.
-    await client.clone({ owner: 'legacy', name: 'repo' }, 'unused').catch(() => undefined);
+    vi.stubEnv('GIT_CONFIG_COUNT', '2');
+    vi.stubEnv('GIT_CONFIG_KEY_0', 'color.ui');
+    vi.stubEnv('GIT_CONFIG_VALUE_0', 'false');
+    vi.stubEnv('GIT_CONFIG_KEY_1', 'core.quotepath');
+    vi.stubEnv('GIT_CONFIG_VALUE_1', 'true');
+    try {
+      await client.clone({ owner: 'legacy', name: 'repo' }, cleanUrl);
+    } finally {
+      vi.unstubAllEnvs();
+    }
 
-    expect(run(dest, 'remote', 'get-url', 'origin')).toBe('https://github.com/legacy/repo.git');
+    expect(run(dest, 'config', '--local', '--get', 'remote.origin.url')).toBe(cleanUrl);
   });
 
   it('never removes anything outside cloneDir for a traversal ref', async () => {
