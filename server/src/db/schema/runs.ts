@@ -1,4 +1,5 @@
-import { doublePrecision, index, pgTable, uuid, text, integer, jsonb, timestamp } from 'drizzle-orm/pg-core';
+import { sql } from 'drizzle-orm';
+import { check, doublePrecision, index, pgTable, uuid, text, integer, jsonb, timestamp } from 'drizzle-orm/pg-core';
 import { workspaces } from './core';
 import { agents } from './agents';
 import { pullRequests } from './pulls';
@@ -30,7 +31,10 @@ export const agentRuns = pgTable('agent_runs', {
   score: integer('score'),
   /** Findings that tripped the agent's gate (severity ≥ ciFailOn). */
   blockers: integer('blockers'),
-}, (t) => ({ pullIdx: index('agent_runs_ws_pr_idx').on(t.workspaceId, t.prId) }));
+}, (t) => [
+  index('agent_runs_ws_pr_idx').on(t.workspaceId, t.prId),
+  check('agent_runs_cost_source_check', sql`${t.costSource} in ('reported', 'estimated')`),
+]);
 
 /** Cost contribution retained after the corresponding run and trace are deleted. */
 export const deletedRunCosts = pgTable('deleted_run_costs', {
@@ -43,7 +47,10 @@ export const deletedRunCosts = pgTable('deleted_run_costs', {
     .references(() => pullRequests.id, { onDelete: 'cascade' }),
   costUsd: doublePrecision('cost_usd'),
   costSource: text('cost_source', { enum: ['reported', 'estimated'] }),
-}, (t) => ({ pullIdx: index('deleted_run_costs_ws_pr_idx').on(t.workspaceId, t.prId) }));
+}, (t) => [
+  index('deleted_run_costs_ws_pr_idx').on(t.workspaceId, t.prId),
+  check('deleted_run_costs_cost_source_check', sql`${t.costSource} in ('reported', 'estimated')`),
+]);
 
 /** Whole trace of one run as a SINGLE jsonb document. */
 export const runTraces = pgTable('run_traces', {

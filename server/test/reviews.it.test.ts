@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { startPg, dockerAvailable, type PgFixture } from './helpers/pg.js';
 import { waitForPrRuns } from './helpers/runs.js';
@@ -230,6 +231,28 @@ d('A2 reviews + agents (Testcontainers pg)', () => {
     expect(reviews[0].findings).toHaveLength(1);
     expect(reviews[0].model).toBe('claude-x');
     await app.close();
+  });
+
+  it('accepts known and null cost sources and rejects invalid sources in both run tables', async () => {
+    const { db, sql } = pg.handle;
+    const { pr } = await setupRepoAndPr(db, workspaceId);
+    const allowedSources = ['reported', 'estimated', null] as const;
+    const runs = await db.insert(t.agentRuns)
+      .values(allowedSources.map((costSource) => ({ workspaceId, prId: pr.id, costSource })))
+      .returning({ id: t.agentRuns.id, costSource: t.agentRuns.costSource });
+    const deletedRuns = await db.insert(t.deletedRunCosts)
+      .values(allowedSources.map((costSource) => ({ runId: randomUUID(), workspaceId, prId: pr.id, costSource })))
+      .returning({ id: t.deletedRunCosts.runId, costSource: t.deletedRunCosts.costSource });
+
+    expect(new Set(runs.map((run) => run.costSource))).toEqual(new Set(allowedSources));
+    expect(new Set(deletedRuns.map((run) => run.costSource))).toEqual(new Set(allowedSources));
+
+    await Promise.all([
+      expect(sql`update agent_runs set cost_source = 'invalid' where id = ${runs[0]!.id}`)
+        .rejects.toMatchObject({ code: '23514', constraint_name: 'agent_runs_cost_source_check' }),
+      expect(sql`update deleted_run_costs set cost_source = 'invalid' where run_id = ${deletedRuns[0]!.id}`)
+        .rejects.toMatchObject({ code: '23514', constraint_name: 'deleted_run_costs_cost_source_check' }),
+    ]);
   });
 
   it('keeps tracked PR spend and its completeness when runs are removed from history', async () => {
