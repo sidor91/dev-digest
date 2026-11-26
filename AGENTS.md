@@ -2,6 +2,12 @@
 
 DevDigest is a local-first pull request review tool. Its four packages have separate lockfiles and run their own checks.
 
+## Engineering insights
+
+Follow the [Engineering Insights skill](.claude/skills/engineering-insights/SKILL.md) in every session.
+Read each relevant module's `INSIGHTS.md` before substantive work or an answer about that module.
+Before the final response, check for substantive new findings and reread each existing target file in full before adding entries.
+
 ## Package map
 
 Read the instructions for each package affected by your change before editing it.
