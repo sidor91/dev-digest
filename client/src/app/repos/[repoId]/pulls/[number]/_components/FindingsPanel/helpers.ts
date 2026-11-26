@@ -1,5 +1,5 @@
 import type { FindingRecord, Severity } from "@devdigest/shared";
-import { LOW_CONFIDENCE_THRESHOLD, SEVERITY_ORDER } from "./constants";
+import { FINDING_SEVERITIES, LOW_CONFIDENCE_THRESHOLD, SEVERITY_ORDER } from "./constants";
 
 /** Optionally drop low-confidence findings and sort by severity. */
 export function visibleFindings(findings: FindingRecord[], hideLow: boolean): FindingRecord[] {
@@ -12,8 +12,10 @@ export function visibleFindings(findings: FindingRecord[], hideLow: boolean): Fi
 
 export function countBySeverity(findings: FindingRecord[]): Record<Severity, number> {
   const counts: Record<Severity, number> = { CRITICAL: 0, WARNING: 0, SUGGESTION: 0 };
-  for (const finding of findings) {
-    counts[finding.severity] += 1;
+  for (const { severity } of findings) {
+    if (FINDING_SEVERITIES.includes(severity)) {
+      counts[severity] += 1;
+    }
   }
   return counts;
 }
