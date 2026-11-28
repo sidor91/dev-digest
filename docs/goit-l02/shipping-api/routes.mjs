@@ -1,6 +1,5 @@
 export const routes = {
-  'GET /v1/shipping-estimate': () => ({ shippingCents: 699 }),
-  'GET /v1/shipping-quote': () => ({ shippingCents: 699 }),
+  'GET /v1/shipping-quote': () => ({ shippingFee: 699, carrierHint: 'ground' }),
 };
 
 export function dispatch(method, path) {

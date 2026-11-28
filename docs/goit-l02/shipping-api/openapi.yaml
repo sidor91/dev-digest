@@ -1,16 +1,8 @@
 openapi: 3.1.0
 info:
   title: Shipping API
-  version: 1.4.2
+  version: 1.5.0
 paths:
-  /v1/shipping-estimate:
-    get:
-      operationId: shippingEstimate
-      deprecated: true
-      description: Supported through 2027-06-30. Use /v1/shipping-quote for new integrations.
-      responses:
-        '200':
-          description: Estimated shipping in cents.
   /v1/shipping-quote:
     get:
       operationId: shippingQuote
@@ -22,8 +14,11 @@ paths:
               schema:
                 type: object
                 additionalProperties: true
-                required: [shippingCents]
+                required: [shippingFee]
                 properties:
-                  shippingCents:
+                  shippingFee:
                     type: integer
                     description: Shipping charge in USD cents.
+                  carrierHint:
+                    type: string
+                    description: Optional display hint for the carrier.
